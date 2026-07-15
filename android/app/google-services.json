@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "145334725425",
+    "project_id": "uni-pay-eb481",
+    "storage_bucket": "uni-pay-eb481.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:145334725425:android:8d6d8378cde15fd80a1e10",
+        "android_client_info": {
+          "package_name": "com.example.fastnew"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAn1bMsm3M4pLONLUevH5Tg3FMJLgRNqVk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

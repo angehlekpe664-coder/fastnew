@@ -1,0 +1,36 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "uni-pay-eb481",
+          "appId": "1:145334725425:android:8d6d8378cde15fd80a1e10",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "uni-pay-eb481",
+          "configurations": {
+            "android": "1:145334725425:android:8d6d8378cde15fd80a1e10",
+            "ios": "1:145334725425:ios:6d4c384169e0385f0a1e10",
+            "macos": "1:145334725425:ios:6d4c384169e0385f0a1e10",
+            "web": "1:145334725425:web:803889a2131a0d1e0a1e10",
+            "windows": "1:145334725425:web:74d4a215765ef08c0a1e10"
+          }
+        }
+      }
+    }
+  },
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firestore-debug.log",
+      "ui-debug.log"
+    ]
+  }
+}

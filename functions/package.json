@@ -1,0 +1,22 @@
+{
+  "name": "unipay-receipt-verifier",
+  "version": "1.0.0",
+  "description": "Google Cloud Function to verify university receipts with anti-fraud checking",
+  "main": "index.js",
+  "scripts": {
+    "start": "functions-framework --target=verifyReceipt"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.0.0",
+    "@google/generative-ai": "^0.11.0",
+    "busboy": "^1.6.0",
+    "canvas": "^2.11.2",
+    "firebase-admin": "^12.0.0",
+    "jsqr": "^1.4.0",
+    "node-fetch": "^2.7.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@google-cloud/functions-framework": "^3.3.0"
+  }
+}
