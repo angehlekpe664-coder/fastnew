@@ -1,11 +1,11 @@
 {
-    "name": "fastnew",
-    "short_name": "fastnew",
+    "name": "UniPay TP",
+    "short_name": "UniPay",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0056D2",
+    "theme_color": "#0056D2",
+    "description": "UniPay TP - Gestion sécurisée des paiements des TP",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

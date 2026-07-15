@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  nom          String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ValidatedStudent {
+  id               String   @id @default(cuid())
+  nom              String
+  prenom           String
+  faculte          String
+  departement      String
+  filiere          String
+  niveau           String
+  matiere          String?
+  numeroQuittance  String   @unique
+  referencePaiement String?
+  montant          Int
+  datePaiement     DateTime?
+  dateVerification DateTime @default(now())
+  fichierQuittance String
+  validationId     String   @unique
+  statut           String   @default("VALIDE")
+  confidence       Float?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+}
+
+model FailedVerification {
+  id        String   @id @default(cuid())
+  nom       String
+  prenom    String
+  faculte   String?
+  departement String?
+  filiere   String?
+  niveau    String?
+  motif     String
+  fichier   String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model ValidationSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  label     String?
+  category  String   @default("general")
+  updatedAt DateTime @updatedAt
+}
