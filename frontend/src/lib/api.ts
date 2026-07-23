@@ -34,16 +34,20 @@ const API = getApiUrl();
 const tpCache = new Map<string, { data: TpInfo | null; expires: number }>();
 const listCaches = new Map<string, { data: TpInfo[]; expires: number }>();
 
-export async function fetchActiveTps(filiere?: string): Promise<TpInfo[]> {
-  const cacheKey = filiere?.toUpperCase() ?? "__all__";
-  const hit = listCaches.get(cacheKey);
-  if (hit && hit.expires > Date.now()) return hit.data;
+const TP_CACHE_MS = 15_000;
 
-  const params = filiere ? `?filiere=${encodeURIComponent(filiere)}` : "";
-  const res = await fetch(`${API}/api/verify/tp${params}`);
+export async function fetchActiveTps(filiere?: string, force = false): Promise<TpInfo[]> {
+  const cacheKey = filiere?.toUpperCase() ?? "__all__";
+  if (!force) {
+    const hit = listCaches.get(cacheKey);
+    if (hit && hit.expires > Date.now()) return hit.data;
+  }
+
+  const params = filiere ? `?filiere=${encodeURIComponent(filiere)}&_=${Date.now()}` : `?_=${Date.now()}`;
+  const res = await fetch(`${API}/api/verify/tp${params}`, { cache: "no-store" });
   if (!res.ok) return [];
   const data = (await res.json()) as TpInfo[];
-  listCaches.set(cacheKey, { data, expires: Date.now() + 120_000 });
+  listCaches.set(cacheKey, { data, expires: Date.now() + TP_CACHE_MS });
   return data;
 }
 
@@ -57,9 +61,9 @@ export async function fetchTp(code: string): Promise<TpInfo | null> {
   const hit = tpCache.get(key);
   if (hit && hit.expires > Date.now()) return hit.data;
 
-  const res = await fetch(`${API}/api/verify/tp/${encodeURIComponent(key)}`);
+  const res = await fetch(`${API}/api/verify/tp/${encodeURIComponent(key)}`, { cache: "no-store" });
   const data = res.ok ? ((await res.json()) as TpInfo) : null;
-  tpCache.set(key, { data, expires: Date.now() + 120_000 });
+  tpCache.set(key, { data, expires: Date.now() + TP_CACHE_MS });
   return data;
 }
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { verifyQuittance, fetchActiveTps, type TpInfo } from "@/lib/api";
+import { verifyQuittance, fetchActiveTps, clearTpListCache, type TpInfo } from "@/lib/api";
 import { formatAmount } from "@/lib/utils";
 
 const STEPS = ["Identité", "TP", "Quittance"];
@@ -32,7 +32,8 @@ export default function VerifyPage() {
   useEffect(() => {
     if (step !== 1) return;
     setTpLoading(true);
-    fetchActiveTps(form.filiere)
+    clearTpListCache();
+    fetchActiveTps(form.filiere, true)
       .then((list) => {
         setTpList(list);
       })

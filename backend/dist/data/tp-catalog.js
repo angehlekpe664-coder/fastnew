@@ -1,16 +1,14 @@
 import { createCache } from "../lib/cache.js";
-/** Catalogue TP local (fallback si Supabase indisponible) */
+/** Fallback local uniquement si Supabase est indisponible */
 export const TP_CATALOG = {
     PHY1322: { title: "Mécanique Expérimental", filiere: "MIA", montant: 1000, actif: true },
 };
-const TTL = 120_000;
+const TTL = 30_000;
 const tpByCode = new Map();
 const listCache = createCache(TTL);
-export function invalidateTpCache(code) {
-    if (code)
-        tpByCode.delete(code.toUpperCase());
-    else
-        tpByCode.clear();
+/** Invalide tout le cache TP (liste + lookups). */
+export function invalidateTpCache() {
+    tpByCode.clear();
     listCache.clear();
 }
 function getTpCached(code) {
@@ -29,13 +27,16 @@ export async function lookupTp(code) {
         return cached;
     const { getSupabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
     if (isSupabaseConfigured()) {
-        const { data } = await getSupabaseAdmin()
+        const { data, error } = await getSupabaseAdmin()
             .from("tp_catalog")
             .select("code, title, filiere, montant, actif")
             .eq("code", normalized)
-            .eq("actif", true)
             .maybeSingle();
-        if (data) {
+        if (!error) {
+            if (!data || !data.actif) {
+                setTpCached(normalized, null);
+                return null;
+            }
             setTpCached(normalized, data);
             return data;
         }
@@ -55,14 +56,15 @@ export async function listActiveTp() {
         return cached;
     const { getSupabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
     if (isSupabaseConfigured()) {
-        const { data } = await getSupabaseAdmin()
+        const { data, error } = await getSupabaseAdmin()
             .from("tp_catalog")
             .select("code, title, filiere, montant, actif")
             .eq("actif", true)
             .order("code");
-        if (data?.length) {
-            listCache.set(data);
-            return data;
+        if (!error) {
+            const list = (data ?? []).filter((row) => row.actif !== false);
+            listCache.set(list);
+            return list;
         }
     }
     const list = Object.entries(TP_CATALOG)

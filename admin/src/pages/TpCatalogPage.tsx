@@ -102,15 +102,24 @@ export default function TpCatalogPage() {
 
   const toggle = async (row: TpRow) => {
     const nextActif = !row.actif;
+    setErr("");
+    setMsg("");
     setRows((prev) => prev.map((r) => (r.code === row.code ? { ...r, actif: nextActif } : r)));
     try {
       const updated = await adminFetch<TpRow>(`/api/admin/tp-catalog/${encodeURIComponent(row.code)}`, {
         method: "PATCH",
         body: JSON.stringify({ actif: nextActif }),
       });
+      if (updated.actif !== nextActif) {
+        throw new Error("Le serveur n'a pas confirmé le changement de statut.");
+      }
       setRows((prev) => mergeRow(prev, updated));
-      setMsg(nextActif ? `TP ${row.code} activé.` : `TP ${row.code} désactivé.`);
-      setErr("");
+      await load();
+      setMsg(
+        updated.actif
+          ? `TP ${row.code} activé — visible sur le site public immédiatement.`
+          : `TP ${row.code} désactivé.`
+      );
     } catch (e) {
       setRows((prev) => prev.map((r) => (r.code === row.code ? row : r)));
       setErr(e instanceof Error ? e.message : "Impossible de modifier le statut.");

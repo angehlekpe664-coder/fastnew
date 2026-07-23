@@ -70,7 +70,7 @@ adminRouter.get("/failures", async (req, res) => {
         .order("created_at", { ascending: false })
         .limit(limit);
     if (since) {
-        query = query.gte("created_at", since);
+        query = query.gt("created_at", since);
     }
     if (q) {
         query = query.or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,motif.ilike.%${q}%,matricule.ilike.%${q}%,code_tp.ilike.%${q}%`);
@@ -97,6 +97,7 @@ adminRouter.put("/settings", async (req, res) => {
     return res.json(await upsertValidationRules(req.body));
 });
 adminRouter.get("/tp-catalog", async (_req, res) => {
+    res.set("Cache-Control", "no-cache, no-store, must-revalidate");
     const { data, error } = await getSupabaseAdmin()
         .from("tp_catalog")
         .select("code, title, filiere, montant, actif, created_at")
@@ -116,7 +117,7 @@ adminRouter.post("/tp-catalog", async (req, res) => {
         title: String(title).trim(),
         filiere: String(filiere).trim().toUpperCase(),
         montant: Number(montant) || 1000,
-        actif: Boolean(actif),
+        actif: actif === true || actif === "true" || actif === 1,
     };
     const sb = getSupabaseAdmin();
     const { error: upsertError } = await sb.from("tp_catalog").upsert(row, { onConflict: "code" });
@@ -129,7 +130,7 @@ adminRouter.post("/tp-catalog", async (req, res) => {
     return res.status(201).json(data);
 });
 adminRouter.patch("/tp-catalog/:code", async (req, res) => {
-    const code = decodeURIComponent(req.params.code).toUpperCase();
+    const code = decodeURIComponent(req.params.code).trim().toUpperCase();
     const { title, filiere, montant, actif } = req.body;
     const patch = {};
     if (title !== undefined)
@@ -139,21 +140,35 @@ adminRouter.patch("/tp-catalog/:code", async (req, res) => {
     if (montant !== undefined)
         patch.montant = Number(montant);
     if (actif !== undefined)
-        patch.actif = Boolean(actif);
+        patch.actif = actif === true || actif === "true";
     if (!Object.keys(patch).length) {
         return res.status(400).json({ error: "Aucune modification fournie." });
     }
-    const { data, error } = await getSupabaseAdmin()
+    const sb = getSupabaseAdmin();
+    const { data: existing, error: readError } = await sb
         .from("tp_catalog")
-        .update(patch)
-        .eq("code", code)
         .select("code, title, filiere, montant, actif")
+        .eq("code", code)
         .maybeSingle();
+    if (readError)
+        return res.status(500).json({ error: readError.message });
+    if (!existing)
+        return res.status(404).json({ error: `TP « ${code} » introuvable.` });
+    const row = {
+        code,
+        title: patch.title ?? existing.title,
+        filiere: patch.filiere ?? existing.filiere,
+        montant: patch.montant ?? existing.montant,
+        actif: patch.actif !== undefined ? patch.actif : existing.actif,
+    };
+    const { data, error } = await sb
+        .from("tp_catalog")
+        .upsert(row, { onConflict: "code" })
+        .select("code, title, filiere, montant, actif")
+        .single();
     if (error)
         return res.status(500).json({ error: error.message });
-    if (!data)
-        return res.status(404).json({ error: `TP « ${code} » introuvable.` });
-    invalidateTpCache(code);
+    invalidateTpCache();
     return res.json(data);
 });
 adminRouter.get("/export/:format", async (req, res) => {

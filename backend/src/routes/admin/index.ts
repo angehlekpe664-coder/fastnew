@@ -136,6 +136,7 @@ adminRouter.put("/settings", async (req, res) => {
 });
 
 adminRouter.get("/tp-catalog", async (_req, res) => {
+  res.set("Cache-Control", "no-cache, no-store, must-revalidate");
   const { data, error } = await getSupabaseAdmin()
     .from("tp_catalog")
     .select("code, title, filiere, montant, actif, created_at")
@@ -156,7 +157,7 @@ adminRouter.post("/tp-catalog", async (req, res) => {
     title: String(title).trim(),
     filiere: String(filiere).trim().toUpperCase(),
     montant: Number(montant) || 1000,
-    actif: Boolean(actif),
+    actif: actif === true || actif === "true" || actif === 1,
   };
 
   const sb = getSupabaseAdmin();
@@ -171,29 +172,46 @@ adminRouter.post("/tp-catalog", async (req, res) => {
 });
 
 adminRouter.patch("/tp-catalog/:code", async (req, res) => {
-  const code = decodeURIComponent(req.params.code).toUpperCase();
+  const code = decodeURIComponent(req.params.code).trim().toUpperCase();
   const { title, filiere, montant, actif } = req.body;
   const patch: Record<string, unknown> = {};
   if (title !== undefined) patch.title = String(title).trim();
   if (filiere !== undefined) patch.filiere = String(filiere).trim().toUpperCase();
   if (montant !== undefined) patch.montant = Number(montant);
-  if (actif !== undefined) patch.actif = Boolean(actif);
+  if (actif !== undefined) patch.actif = actif === true || actif === "true";
 
   if (!Object.keys(patch).length) {
     return res.status(400).json({ error: "Aucune modification fournie." });
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const sb = getSupabaseAdmin();
+
+  const { data: existing, error: readError } = await sb
     .from("tp_catalog")
-    .update(patch)
-    .eq("code", code)
     .select("code, title, filiere, montant, actif")
+    .eq("code", code)
     .maybeSingle();
 
-  if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: `TP « ${code} » introuvable.` });
+  if (readError) return res.status(500).json({ error: readError.message });
+  if (!existing) return res.status(404).json({ error: `TP « ${code} » introuvable.` });
 
-  invalidateTpCache(code);
+  const row = {
+    code,
+    title: (patch.title as string | undefined) ?? existing.title,
+    filiere: (patch.filiere as string | undefined) ?? existing.filiere,
+    montant: (patch.montant as number | undefined) ?? existing.montant,
+    actif: patch.actif !== undefined ? (patch.actif as boolean) : existing.actif,
+  };
+
+  const { data, error } = await sb
+    .from("tp_catalog")
+    .upsert(row, { onConflict: "code" })
+    .select("code, title, filiere, montant, actif")
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  invalidateTpCache();
   return res.json(data);
 });
 

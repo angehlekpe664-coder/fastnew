@@ -13,9 +13,9 @@ const upload = multer({
     },
 });
 export const verifyRouter = Router();
-const TP_CACHE = "public, max-age=120, stale-while-revalidate=300";
+const TP_HEADERS = { "Cache-Control": "no-cache, no-store, must-revalidate" };
 verifyRouter.get("/tp", async (req, res) => {
-    res.set("Cache-Control", TP_CACHE);
+    res.set(TP_HEADERS);
     const filiere = String(req.query.filiere ?? "").trim().toUpperCase();
     let list = await listActiveTp();
     if (filiere)
@@ -23,7 +23,7 @@ verifyRouter.get("/tp", async (req, res) => {
     return res.json(list);
 });
 verifyRouter.get("/tp/:code", async (req, res) => {
-    res.set("Cache-Control", TP_CACHE);
+    res.set(TP_HEADERS);
     const code = decodeURIComponent(req.params.code);
     const tp = await lookupTp(code);
     if (!tp)
