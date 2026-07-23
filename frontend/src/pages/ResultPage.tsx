@@ -2,7 +2,7 @@ import { Link, useLocation, Navigate } from "react-router-dom";
 import { CheckCircle2, XCircle, Copy, Home, Printer } from "lucide-react";
 import { PublicLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatAmount, formatDate } from "@/lib/utils";
 import type { VerifyFailure, VerifySuccess } from "@/lib/api";

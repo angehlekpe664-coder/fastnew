@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Skeleton } from "@/components/ui/admin-ui";
 import { BookOpen, Plus, Power, PowerOff } from "lucide-react";
-import { formatAmount } from "@/lib/utils";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/draft";
 
 type TpRow = {
