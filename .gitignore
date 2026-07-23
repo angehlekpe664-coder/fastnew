@@ -1,3 +1,11 @@
+# Secrets — ne jamais versionner
+.env
+.env.*
+!.env.example
+backend/.env
+admin/.env
+frontend/.env
+
 # Miscellaneous
 *.class
 *.log

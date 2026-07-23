@@ -1,62 +1,47 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, FileCheck, Shield, ScanLine, BadgeCheck } from "lucide-react";
+import { ArrowRight, Shield, FileSearch, BadgeCheck, Landmark } from "lucide-react";
 import { PublicLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-const steps = [
-  { icon: FileCheck, title: "Remplissez le formulaire", desc: "Nom, filière, niveau et votre quittance PDF ou image." },
-  { icon: ScanLine, title: "Analyse automatique", desc: "OCR, QR Code, montant, nom et règles configurables par l'administration." },
-  { icon: BadgeCheck, title: "Recevez votre identifiant", desc: "Aucun compte requis. Un numéro de validation unique vous est délivré." },
-];
 
 export default function HomePage() {
   return (
     <PublicLayout>
-      <section className="mx-auto max-w-6xl px-4 py-16 animate-fade-in">
-        <div className="grid items-center gap-10 lg:grid-cols-2">
-          <div className="space-y-6 text-left">
-            <div className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-primary">
-              <Shield className="h-4 w-4" /> Service officiel de vérification
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
+        <div className="relative mx-auto max-w-5xl px-4 py-16 md:py-24">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-semibold text-primary">
+              <Landmark className="h-3.5 w-3.5" /> Trésor Public → Vérification UAC
             </div>
-            <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-              Vérifiez votre quittance de paiement TP
+            <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
+              Validez votre quittance TP en 2 minutes
             </h1>
-            <p className="text-lg text-muted">
-              Les paiements se font sur le portail du Trésor Public. Cette plateforme vérifie
-              uniquement l'authenticité de votre quittance et enregistre automatiquement votre validation.
+            <p className="mt-4 text-lg text-muted">
+              Vous avez déjà payé sur le portail du Trésor ? Importez votre quittance ici.
+              <strong className="text-foreground"> Aucun compte. Aucun paiement.</strong>
             </p>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/verifier">
-                <Button size="lg">
-                  Vérifier ma quittance <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-            <p className="text-sm text-muted">Aucune création de compte étudiant requise.</p>
+            <Link to="/verifier" className="mt-8 inline-block">
+              <Button size="lg" className="h-13 px-8 text-base shadow-lg shadow-primary/20">
+                Vérifier ma quittance <ArrowRight className="h-5 w-5" />
+              </Button>
+            </Link>
           </div>
 
-          <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary to-[#003d99] text-white">
-            <CardHeader>
-              <CardTitle className="text-white">Comment ça marche ?</CardTitle>
-              <CardDescription className="text-white/80">
-                Processus simple en 3 étapes
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {steps.map((s, i) => (
-                <div key={s.title} className="flex gap-3 rounded-xl bg-white/10 p-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
-                    <s.icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="font-semibold">{i + 1}. {s.title}</div>
-                    <div className="text-sm text-white/80">{s.desc}</div>
-                  </div>
+          <div className="mt-16 grid gap-4 md:grid-cols-3">
+            {[
+              { icon: Shield, title: "5 infos seulement", desc: "Nom, prénom, matricule, filière, code TP + votre quittance." },
+              { icon: FileSearch, title: "Contrôles Trésor", desc: "Nom, code TP, année, montant et QR officiel — sans IA." },
+              { icon: BadgeCheck, title: "Attestation instantanée", desc: "Recevez un identifiant unique à présenter au contrôleur." },
+            ].map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" />
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+                <h3 className="font-bold">{title}</h3>
+                <p className="mt-1 text-sm text-muted">{desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </PublicLayout>
