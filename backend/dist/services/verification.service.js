@@ -1,8 +1,8 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
 import { createCache } from "../lib/cache.js";
 import fs from "fs/promises";
-import { parseReceiptFile, parseReceiptBuffer, verifyTreasuryQr } from "./receipt-parser.service.js";
-import { analyzeDocumentIntegrity, getIntegrityCheck, } from "./document-integrity.service.js";
+import { parseReceiptBuffer, verifyTreasuryQr } from "./receipt-parser.service.js";
+import { analyzeDocumentIntegrity, } from "./document-integrity.service.js";
 export const DEFAULT_RULES = {
     expectedAmount: 1000,
     academicYear: "2025-2026",
@@ -16,11 +16,9 @@ export const DEFAULT_RULES = {
     requireTpCodeMatch: true,
     requireYearMatch: true,
     requireAmountConsistency: true,
-    blockSuspiciousPdfEditors: true,
-    checkPdfMetadata: true,
     customRules: [],
 };
-const rulesCache = createCache(30_000);
+const rulesCache = createCache(120_000);
 export function invalidateRulesCache() {
     rulesCache.clear();
 }
@@ -98,41 +96,29 @@ function parseDate(value) {
     }
     return null;
 }
-function applyIntegrityChecks(extracted, buffer, mimeType, codeTp, rules) {
-    const integrity = analyzeDocumentIntegrity(buffer, extracted.rawText, {
-        mimeType,
+function applyIntegrityChecks(extracted, codeTp, rules) {
+    const integrity = analyzeDocumentIntegrity(extracted.rawText, {
         expectedTp: codeTp,
         checkAmountConsistency: rules.requireAmountConsistency,
-        checkSuspiciousEditors: rules.blockSuspiciousPdfEditors,
-        checkPdfMeta: rules.checkPdfMetadata,
         checkTpConsistency: rules.requireTpCodeMatch,
     });
     extracted.integrity = integrity;
     if (integrity.resolvedAmount > 0) {
         extracted.amount = integrity.resolvedAmount;
     }
-    const orderedChecks = [
-        { id: "amount_consistency", enabled: rules.requireAmountConsistency },
-        { id: "tp_consistency", enabled: rules.requireTpCodeMatch },
-        { id: "pdf_editor", enabled: rules.blockSuspiciousPdfEditors && mimeType === "application/pdf" },
-        { id: "pdf_structure", enabled: rules.checkPdfMetadata && mimeType === "application/pdf" },
-    ];
-    for (const { id, enabled } of orderedChecks) {
-        if (!enabled)
-            continue;
-        const check = getIntegrityCheck(integrity, id);
-        if (check && !check.passed) {
-            return { ok: false, motif: check.motif ?? "Document suspect ou incohérent.", integrity };
-        }
+    if (!integrity.passed && integrity.blockingMotif) {
+        return { ok: false, motif: integrity.blockingMotif, integrity };
     }
     return { ok: true, integrity };
 }
 export async function verifyReceipt(input, rules) {
     let extracted;
+    const fileBuffer = input.fileBuffer ?? (input.filePath ? await fs.readFile(input.filePath) : null);
+    if (!fileBuffer) {
+        return { success: false, motif: "Fichier quittance manquant." };
+    }
     try {
-        extracted = input.fileBuffer
-            ? await parseReceiptBuffer(input.fileBuffer, input.mimeType)
-            : await parseReceiptFile(input.filePath, input.mimeType);
+        extracted = await parseReceiptBuffer(fileBuffer, input.mimeType);
     }
     catch (error) {
         return {
@@ -140,11 +126,7 @@ export async function verifyReceipt(input, rules) {
             motif: error instanceof Error ? error.message : "Impossible de lire le document.",
         };
     }
-    const fileBuffer = input.fileBuffer ?? (input.filePath ? await fs.readFile(input.filePath) : null);
-    if (!fileBuffer) {
-        return { success: false, motif: "Fichier quittance manquant." };
-    }
-    const integrityResult = applyIntegrityChecks(extracted, fileBuffer, input.mimeType, input.codeTp, rules);
+    const integrityResult = applyIntegrityChecks(extracted, input.codeTp, rules);
     if (!integrityResult.ok) {
         return {
             success: false,

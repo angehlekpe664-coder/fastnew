@@ -136,7 +136,7 @@ async function parseBuffer(buffer, mimeType) {
     let rawText = "";
     let qrUrl = null;
     if (mimeType === "application/pdf") {
-        const parsed = await pdfParse(buffer);
+        const parsed = await pdfParse(buffer, { max: 4 });
         rawText = parsed.text;
         methods.push("pdf-parse");
         qrUrl = rawText.match(TREASURY_QR)?.[0] ?? null;
@@ -206,7 +206,7 @@ export async function verifyTreasuryQr(qrUrl, extracted) {
         return { ok: false, verifiedOnline: false, motif: "QR Code Trésor invalide (token de vérification absent)." };
     }
     try {
-        const res = await fetch(qrUrl, { signal: AbortSignal.timeout(4000) });
+        const res = await fetch(qrUrl, { signal: AbortSignal.timeout(2000) });
         if (!res.ok)
             return { ok: true, verifiedOnline: false };
         const html = await res.text();

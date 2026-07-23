@@ -43,7 +43,7 @@ export async function fetchActiveTps(filiere?: string): Promise<TpInfo[]> {
   const res = await fetch(`${API}/api/verify/tp${params}`);
   if (!res.ok) return [];
   const data = (await res.json()) as TpInfo[];
-  listCaches.set(cacheKey, { data, expires: Date.now() + 30_000 });
+  listCaches.set(cacheKey, { data, expires: Date.now() + 120_000 });
   return data;
 }
 
@@ -59,7 +59,7 @@ export async function fetchTp(code: string): Promise<TpInfo | null> {
 
   const res = await fetch(`${API}/api/verify/tp/${encodeURIComponent(key)}`);
   const data = res.ok ? ((await res.json()) as TpInfo) : null;
-  tpCache.set(key, { data, expires: Date.now() + 60_000 });
+  tpCache.set(key, { data, expires: Date.now() + 120_000 });
   return data;
 }
 

@@ -62,18 +62,33 @@ adminRouter.get("/students", async (req, res) => {
 });
 adminRouter.get("/failures", async (req, res) => {
     const q = String(req.query.q ?? "").trim();
+    const since = String(req.query.since ?? "").trim();
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "100"), 10) || 100, 1), 200);
     let query = getSupabaseAdmin()
         .from("failed_verifications")
-        .select("*")
+        .select("id, nom, prenom, matricule, filiere, code_tp, motif, created_at, fichier")
         .order("created_at", { ascending: false })
-        .limit(200);
-    if (q) {
-        query = query.or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,motif.ilike.%${q}%,matricule.ilike.%${q}%`);
+        .limit(limit);
+    if (since) {
+        query = query.gte("created_at", since);
     }
-    const { data, error } = await query;
+    if (q) {
+        query = query.or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,motif.ilike.%${q}%,matricule.ilike.%${q}%,code_tp.ilike.%${q}%`);
+    }
+    const [{ data, error }, { count: totalToday }] = await Promise.all([
+        query,
+        getSupabaseAdmin()
+            .from("failed_verifications")
+            .select("*", { count: "exact", head: true })
+            .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
+    ]);
     if (error)
         return res.status(500).json({ error: error.message });
-    return res.json(data);
+    res.set("Cache-Control", "private, no-cache");
+    return res.json({
+        items: data ?? [],
+        meta: { totalToday: totalToday ?? 0, limit, since: since || null },
+    });
 });
 adminRouter.get("/settings", async (_req, res) => {
     return res.json(await getValidationRules());

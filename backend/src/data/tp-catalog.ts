@@ -16,7 +16,7 @@ export type TpEntry = {
   actif?: boolean;
 };
 
-const TTL = 60_000;
+const TTL = 120_000;
 const tpByCode = new Map<string, { value: TpEntry | null; expires: number }>();
 const listCache = createCache<TpEntry[]>(TTL);
 

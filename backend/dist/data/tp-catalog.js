@@ -3,7 +3,7 @@ import { createCache } from "../lib/cache.js";
 export const TP_CATALOG = {
     PHY1322: { title: "Mécanique Expérimental", filiere: "MIA", montant: 1000, actif: true },
 };
-const TTL = 60_000;
+const TTL = 120_000;
 const tpByCode = new Map();
 const listCache = createCache(TTL);
 export function invalidateTpCache(code) {

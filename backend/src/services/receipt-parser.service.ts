@@ -178,7 +178,7 @@ async function parseBuffer(buffer: Buffer, mimeType: string): Promise<ParsedRece
   let qrUrl: string | null = null;
 
   if (mimeType === "application/pdf") {
-    const parsed = await pdfParse(buffer);
+    const parsed = await pdfParse(buffer, { max: 4 });
     rawText = parsed.text;
     methods.push("pdf-parse");
     qrUrl = rawText.match(TREASURY_QR)?.[0] ?? null;
@@ -248,7 +248,7 @@ export async function verifyTreasuryQr(
   }
 
   try {
-    const res = await fetch(qrUrl, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(qrUrl, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) return { ok: true, verifiedOnline: false };
 
     const html = await res.text();
