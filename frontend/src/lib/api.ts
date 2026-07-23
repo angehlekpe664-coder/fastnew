@@ -1,3 +1,5 @@
+import { getApiUrl } from "./config";
+
 export type VerifyPayload = {
   nom: string;
   prenom: string;
@@ -28,7 +30,7 @@ export type VerifySuccess = {
 
 export type VerifyFailure = { success: false; motif: string };
 
-const API = import.meta.env.VITE_API_URL ?? "";
+const API = getApiUrl();
 const tpCache = new Map<string, { data: TpInfo | null; expires: number }>();
 const listCaches = new Map<string, { data: TpInfo[]; expires: number }>();
 

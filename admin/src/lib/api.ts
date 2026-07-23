@@ -1,4 +1,6 @@
-const API = import.meta.env.VITE_API_URL ?? "";
+import { getApiUrl } from "./config";
+
+const API = getApiUrl();
 
 let tokenCache: { token: string; expires: number } | null = null;
 
@@ -51,7 +53,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
     } catch {
       throw new Error(
         res.status === 502 || res.status === 504
-          ? "Backend indisponible. Lancez : cd backend && npm run dev"
+          ? "Backend indisponible. Réessayez dans quelques instants."
           : "Réponse serveur invalide."
       );
     }
@@ -63,7 +65,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
     if (!text) {
       throw new Error(
         res.status === 502 || res.status === 504
-          ? "Backend indisponible. Lancez : cd backend && npm run dev"
+          ? "Backend indisponible. Réessayez dans quelques instants."
           : `Erreur API (${res.status})`
       );
     }
@@ -96,7 +98,7 @@ export async function adminFetch<T>(path: string, init?: RequestInit, retried = 
       },
     });
   } catch {
-    throw new Error("Impossible de joindre l'API. Vérifiez que le backend tourne sur le port 4000.");
+    throw new Error("Impossible de joindre l'API. Vérifiez votre connexion.");
   }
 
   if (res.status === 401 && !retried) {

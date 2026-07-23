@@ -5,12 +5,21 @@ import { verifyRouter } from "./routes/verify.js";
 import { adminRouter } from "./routes/admin/index.js";
 const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173,http://localhost:5174")
     .split(",")
-    .map((o) => o.trim());
+    .map((o) => o.trim())
+    .filter(Boolean);
+function isAllowedOrigin(origin) {
+    if (allowedOrigins.includes(origin))
+        return true;
+    if (process.env.NODE_ENV === "production" && /\.onrender\.com$/i.test(new URL(origin).host)) {
+        return true;
+    }
+    return false;
+}
 export function createApp() {
     const app = express();
     app.use(cors({
         origin: (origin, cb) => {
-            if (!origin || allowedOrigins.includes(origin))
+            if (!origin || isAllowedOrigin(origin))
                 cb(null, true);
             else
                 cb(new Error("CORS non autorisé"));
