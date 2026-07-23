@@ -17,6 +17,9 @@ type Rules = {
   requireOfficialLogo: boolean;
   requireTpCodeMatch: boolean;
   requireYearMatch: boolean;
+  requireAmountConsistency: boolean;
+  blockSuspiciousPdfEditors: boolean;
+  checkPdfMetadata: boolean;
 };
 
 export default function SettingsPage() {
@@ -74,6 +77,9 @@ export default function SettingsPage() {
             <Check label="Code TP entre parenthèses" checked={rules.requireTpCodeMatch} onChange={(v) => u("requireTpCodeMatch", v)} />
             <Check label="Année dans période académique" checked={rules.requireYearMatch} onChange={(v) => u("requireYearMatch", v)} />
             <Check label="Montant conforme au TP" checked disabled />
+            <Check label="Cohérence des montants (anti-falsification)" checked={rules.requireAmountConsistency} onChange={(v) => u("requireAmountConsistency", v)} />
+            <Check label="Bloquer éditeurs PDF suspects" checked={rules.blockSuspiciousPdfEditors} onChange={(v) => u("blockSuspiciousPdfEditors", v)} />
+            <Check label="Analyse métadonnées / structure PDF" checked={rules.checkPdfMetadata} onChange={(v) => u("checkPdfMetadata", v)} />
             <Check label="QR Trésor obligatoire" checked={rules.requireQrCode} onChange={(v) => u("requireQrCode", v)} />
             <Check label="Mentions officielles Trésor" checked={rules.requireOfficialLogo} onChange={(v) => u("requireOfficialLogo", v)} />
           </div>

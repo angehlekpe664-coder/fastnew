@@ -62,7 +62,13 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                 await getSupabaseAdmin().from("failed_verifications").insert({
                     nom, prenom, matricule, filiere, code_tp: tp.code,
                     motif: result.motif, fichier: storagePath,
-                    metadata: result.extracted ? { extracted: result.extracted, methods: result.extracted.method } : null,
+                    metadata: result.extracted
+                        ? {
+                            extracted: result.extracted,
+                            methods: result.extracted.method,
+                            integrity: result.extracted.integrity,
+                        }
+                        : null,
                 });
             }
             return res.status(422).json({ success: false, motif: result.motif });
@@ -99,7 +105,11 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                 fichier_quittance: storagePath,
                 validation_id: result.validationId,
                 confidence: result.confidence,
-                metadata: { extracted: result.extracted, parseMethods: result.extracted.method },
+                metadata: {
+                    extracted: result.extracted,
+                    parseMethods: result.extracted.method,
+                    integrity: result.extracted.integrity,
+                },
             })
                 .select()
                 .single();

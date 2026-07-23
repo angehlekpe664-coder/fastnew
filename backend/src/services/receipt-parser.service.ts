@@ -4,6 +4,7 @@ import pdfParse from "pdf-parse";
 import { PNG } from "pngjs";
 import jpeg from "jpeg-js";
 import { ocrImage } from "./ocr.worker.js";
+import type { DocumentIntegrityReport } from "./document-integrity.service.js";
 
 const require = createRequire(import.meta.url);
 const jsQR = require("jsqr") as (
@@ -28,6 +29,7 @@ export type ParsedReceipt = {
   confidence: number;
   rawText: string;
   method: string[];
+  integrity?: DocumentIntegrityReport;
 };
 
 const TREASURY_QR =

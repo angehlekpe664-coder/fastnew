@@ -1,7 +1,13 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
 import { createCache } from "../lib/cache.js";
+import fs from "fs/promises";
 import { parseReceiptFile, parseReceiptBuffer, verifyTreasuryQr } from "./receipt-parser.service.js";
 import type { ParsedReceipt } from "./receipt-parser.service.js";
+import {
+  analyzeDocumentIntegrity,
+  getIntegrityCheck,
+  type DocumentIntegrityReport,
+} from "./document-integrity.service.js";
 
 export type ValidationRules = {
   expectedAmount: number;
@@ -15,6 +21,9 @@ export type ValidationRules = {
   requireOfficialLogo: boolean;
   requireTpCodeMatch: boolean;
   requireYearMatch: boolean;
+  requireAmountConsistency: boolean;
+  blockSuspiciousPdfEditors: boolean;
+  checkPdfMetadata: boolean;
   customRules: Array<{ key: string; value: string; enabled: boolean }>;
 };
 
@@ -30,6 +39,9 @@ export const DEFAULT_RULES: ValidationRules = {
   requireOfficialLogo: true,
   requireTpCodeMatch: true,
   requireYearMatch: true,
+  requireAmountConsistency: true,
+  blockSuspiciousPdfEditors: true,
+  checkPdfMetadata: true,
   customRules: [],
 };
 
@@ -138,6 +150,46 @@ export type VerificationResult =
   | { success: true; validationId: string; extracted: ParsedReceipt; confidence: number }
   | { success: false; motif: string; extracted?: ParsedReceipt };
 
+function applyIntegrityChecks(
+  extracted: ParsedReceipt,
+  buffer: Buffer,
+  mimeType: string,
+  codeTp: string,
+  rules: ValidationRules
+): { ok: true; integrity: DocumentIntegrityReport } | { ok: false; motif: string; integrity: DocumentIntegrityReport } {
+  const integrity = analyzeDocumentIntegrity(buffer, extracted.rawText, {
+    mimeType,
+    expectedTp: codeTp,
+    checkAmountConsistency: rules.requireAmountConsistency,
+    checkSuspiciousEditors: rules.blockSuspiciousPdfEditors,
+    checkPdfMeta: rules.checkPdfMetadata,
+    checkTpConsistency: rules.requireTpCodeMatch,
+  });
+
+  extracted.integrity = integrity;
+
+  if (integrity.resolvedAmount > 0) {
+    extracted.amount = integrity.resolvedAmount;
+  }
+
+  const orderedChecks: Array<{ id: string; enabled: boolean }> = [
+    { id: "amount_consistency", enabled: rules.requireAmountConsistency },
+    { id: "tp_consistency", enabled: rules.requireTpCodeMatch },
+    { id: "pdf_editor", enabled: rules.blockSuspiciousPdfEditors && mimeType === "application/pdf" },
+    { id: "pdf_structure", enabled: rules.checkPdfMetadata && mimeType === "application/pdf" },
+  ];
+
+  for (const { id, enabled } of orderedChecks) {
+    if (!enabled) continue;
+    const check = getIntegrityCheck(integrity, id);
+    if (check && !check.passed) {
+      return { ok: false, motif: check.motif ?? "Document suspect ou incohérent.", integrity };
+    }
+  }
+
+  return { ok: true, integrity };
+}
+
 export async function verifyReceipt(
   input: VerificationInput,
   rules: ValidationRules
@@ -152,6 +204,21 @@ export async function verifyReceipt(
     return {
       success: false,
       motif: error instanceof Error ? error.message : "Impossible de lire le document.",
+    };
+  }
+
+  const fileBuffer =
+    input.fileBuffer ?? (input.filePath ? await fs.readFile(input.filePath) : null);
+  if (!fileBuffer) {
+    return { success: false, motif: "Fichier quittance manquant." };
+  }
+
+  const integrityResult = applyIntegrityChecks(extracted, fileBuffer, input.mimeType, input.codeTp, rules);
+  if (!integrityResult.ok) {
+    return {
+      success: false,
+      motif: integrityResult.motif,
+      extracted,
     };
   }
 
