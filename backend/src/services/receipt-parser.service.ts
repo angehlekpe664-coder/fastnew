@@ -1,9 +1,16 @@
 import fs from "fs/promises";
+import { createRequire } from "node:module";
 import pdfParse from "pdf-parse";
 import { PNG } from "pngjs";
 import jpeg from "jpeg-js";
-import jsQR from "jsqr";
 import { ocrImage } from "./ocr.worker.js";
+
+const require = createRequire(import.meta.url);
+const jsQR = require("jsqr") as (
+  data: Uint8ClampedArray,
+  width: number,
+  height: number
+) => { data: string } | null;
 
 export type ParsedReceipt = {
   quittanceNumber: string;

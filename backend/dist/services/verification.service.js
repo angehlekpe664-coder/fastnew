@@ -1,18 +1,28 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
-import { parseReceiptFile } from "./receipt-parser.service.js";
+import { createCache } from "../lib/cache.js";
+import { parseReceiptFile, parseReceiptBuffer, verifyTreasuryQr } from "./receipt-parser.service.js";
 export const DEFAULT_RULES = {
-    expectedAmount: 2500,
+    expectedAmount: 1000,
     academicYear: "2025-2026",
     treasuryAccountNumber: "",
     paymentTitle: "FAST/PRODUITS ACCESSOIRES",
     allowedDateFrom: null,
     allowedDateTo: null,
     treasuryDomain: "equittancetresor.finances.bj",
-    requireQrCode: false,
-    requireOfficialLogo: false,
+    requireQrCode: true,
+    requireOfficialLogo: true,
+    requireTpCodeMatch: true,
+    requireYearMatch: true,
     customRules: [],
 };
+const rulesCache = createCache(30_000);
+export function invalidateRulesCache() {
+    rulesCache.clear();
+}
 export async function getValidationRules() {
+    const cached = rulesCache.get();
+    if (cached)
+        return cached;
     if (!isSupabaseConfigured())
         return DEFAULT_RULES;
     const { data } = await getSupabaseAdmin().from("validation_settings").select("key, value");
@@ -25,29 +35,53 @@ export async function getValidationRules() {
             try {
                 val = JSON.parse(val);
             }
-            catch { /* keep string */ }
+            catch {
+                /* keep string */
+            }
         }
         merged[row.key] = val;
     }
-    return merged;
+    const rules = merged;
+    rulesCache.set(rules);
+    return rules;
 }
 export async function upsertValidationRules(rules) {
     const sb = getSupabaseAdmin();
     for (const [key, value] of Object.entries(rules)) {
         await sb.from("validation_settings").upsert({ key, value, label: key, category: "validation", updated_at: new Date().toISOString() }, { onConflict: "key" });
     }
+    invalidateRulesCache();
     return getValidationRules();
 }
 function normalizeName(name) {
-    return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    return name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
 }
-function namesMatch(formName, receiptName) {
+/** Prénom et nom doivent tous deux apparaître sur la quittance. */
+export function prenomNomMatch(prenom, nom, receiptName) {
     if (!receiptName.trim())
-        return true; // pas de nom sur quittance → accepter si autres checks OK
-    const form = normalizeName(formName);
+        return false;
     const receipt = normalizeName(receiptName);
-    const parts = form.split(/\s+/).filter((p) => p.length > 2);
-    return parts.some((part) => receipt.includes(part));
+    const prenomParts = normalizeName(prenom)
+        .split(/\s+/)
+        .filter((p) => p.length >= 3);
+    const nomParts = normalizeName(nom)
+        .split(/\s+/)
+        .filter((p) => p.length >= 2);
+    if (!prenomParts.length || !nomParts.length)
+        return false;
+    return prenomParts.every((p) => receipt.includes(p)) && nomParts.every((n) => receipt.includes(n));
+}
+export function yearInAcademicYear(year, academicYear) {
+    const range = academicYear.match(/(\d{4})\s*[-–]\s*(\d{4})/);
+    if (range) {
+        return year >= parseInt(range[1], 10) && year <= parseInt(range[2], 10);
+    }
+    const single = parseInt(academicYear, 10);
+    return !Number.isNaN(single) ? year === single : true;
 }
 function parseDate(value) {
     if (!value)
@@ -62,7 +96,9 @@ function parseDate(value) {
 export async function verifyReceipt(input, rules) {
     let extracted;
     try {
-        extracted = await parseReceiptFile(input.filePath, input.mimeType);
+        extracted = input.fileBuffer
+            ? await parseReceiptBuffer(input.fileBuffer, input.mimeType)
+            : await parseReceiptFile(input.filePath, input.mimeType);
     }
     catch (error) {
         return {
@@ -70,42 +106,104 @@ export async function verifyReceipt(input, rules) {
             motif: error instanceof Error ? error.message : "Impossible de lire le document.",
         };
     }
-    const fullName = `${input.prenom} ${input.nom}`.trim();
     const expectedAmount = input.expectedAmount || rules.expectedAmount;
-    if (!extracted.quittanceNumber && extracted.confidence < 0.6) {
+    const isTreasuryDoc = extracted.hasOfficialLogo ||
+        extracted.quittanceNumber ||
+        extracted.qrUrl ||
+        /partie\s+versante/i.test(extracted.rawText);
+    if (!isTreasuryDoc && extracted.confidence < 0.55) {
         return {
             success: false,
-            motif: "Document illisible ou format non reconnu. Utilisez un PDF officiel du Trésor.",
+            motif: "Document illisible ou format non reconnu. Utilisez une quittance officielle du Trésor (PDF ou photo nette).",
             extracted,
         };
     }
-    if (extracted.studentName && !namesMatch(fullName, extracted.studentName)) {
+    if (!extracted.studentName) {
         return {
             success: false,
-            motif: `Nom sur la quittance (${extracted.studentName}) ne correspond pas à ${fullName}.`,
+            motif: "Impossible de lire le nom sur la quittance (Partie versante).",
             extracted,
         };
     }
-    const amount = extracted.amount || expectedAmount;
-    if (expectedAmount > 0 && extracted.amount > 0 && extracted.amount !== expectedAmount) {
+    if (!prenomNomMatch(input.prenom, input.nom, extracted.studentName)) {
         return {
             success: false,
-            motif: `Montant incorrect : ${extracted.amount} FCFA (attendu ${expectedAmount} FCFA pour ${input.codeTp}).`,
+            motif: `Identité non concordante. Sur la quittance : « ${extracted.studentName} » — attendu : ${input.prenom} ${input.nom}.`,
+            extracted,
+        };
+    }
+    if (rules.requireTpCodeMatch) {
+        const tpOnReceipt = extracted.tpCodeFromReceipt || input.codeTp;
+        if (!extracted.tpCodeFromReceipt) {
+            return {
+                success: false,
+                motif: "Code TP introuvable sur la quittance (attendu entre parenthèses à côté du nom).",
+                extracted,
+            };
+        }
+        if (extracted.tpCodeFromReceipt.toUpperCase() !== input.codeTp.toUpperCase()) {
+            return {
+                success: false,
+                motif: `Code TP sur la quittance (${extracted.tpCodeFromReceipt}) ≠ code saisi (${input.codeTp}).`,
+                extracted,
+            };
+        }
+    }
+    if (rules.requireYearMatch) {
+        if (!extracted.paymentYear) {
+            return {
+                success: false,
+                motif: "Date / année de la quittance illisible.",
+                extracted,
+            };
+        }
+        if (!yearInAcademicYear(extracted.paymentYear, rules.academicYear)) {
+            return {
+                success: false,
+                motif: `Année ${extracted.paymentYear} hors période académique ${rules.academicYear}.`,
+                extracted,
+            };
+        }
+    }
+    if (expectedAmount > 0) {
+        if (!extracted.amount) {
+            return {
+                success: false,
+                motif: "Montant illisible sur la quittance.",
+                extracted,
+            };
+        }
+        if (extracted.amount !== expectedAmount) {
+            return {
+                success: false,
+                motif: `Montant incorrect : ${extracted.amount} FCFA (attendu ${expectedAmount} FCFA pour ${input.codeTp}).`,
+                extracted,
+            };
+        }
+    }
+    if (rules.requireOfficialLogo && !extracted.hasOfficialLogo) {
+        return {
+            success: false,
+            motif: "Mentions officielles du Trésor Public non détectées.",
             extracted,
         };
     }
     if (rules.requireQrCode && !extracted.qrUrl) {
         return { success: false, motif: "QR Code officiel du Trésor introuvable.", extracted };
     }
-    if (extracted.qrUrl && !extracted.qrUrl.includes(rules.treasuryDomain)) {
-        return {
-            success: false,
-            motif: "QR Code non officiel (domaine Trésor invalide).",
-            extracted,
-        };
-    }
-    if (rules.requireOfficialLogo && !extracted.hasOfficialLogo) {
-        return { success: false, motif: "Mentions officielles du Trésor non détectées.", extracted };
+    if (extracted.qrUrl) {
+        if (!extracted.qrUrl.includes(rules.treasuryDomain)) {
+            return {
+                success: false,
+                motif: "QR Code non officiel (domaine Trésor invalide).",
+                extracted,
+            };
+        }
+        const qrCheck = await verifyTreasuryQr(extracted.qrUrl, extracted);
+        extracted.qrVerifiedOnline = qrCheck.verifiedOnline;
+        if (!qrCheck.ok) {
+            return { success: false, motif: qrCheck.motif ?? "Échec vérification QR Trésor.", extracted };
+        }
     }
     const paymentDate = parseDate(extracted.datePaiement);
     if (rules.allowedDateFrom && paymentDate && paymentDate < new Date(rules.allowedDateFrom)) {
@@ -124,7 +222,7 @@ export async function verifyReceipt(input, rules) {
     return {
         success: true,
         validationId,
-        extracted: { ...extracted, amount: amount || expectedAmount },
+        extracted: { ...extracted, amount: extracted.amount || expectedAmount },
         confidence: extracted.confidence,
     };
 }

@@ -1,13 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import fsPromises from "fs/promises";
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
 import { getValidationRules, verifyReceipt, uploadQuittance } from "../services/verification.service.js";
-import { lookupTp } from "../data/tp-catalog.js";
-const uploadDir = process.env.UPLOAD_DIR ?? "./uploads";
-fs.mkdirSync(uploadDir, { recursive: true });
+import { lookupTp, listActiveTp } from "../data/tp-catalog.js";
 const storage = multer.memoryStorage();
 const upload = multer({
     storage,
@@ -18,8 +13,16 @@ const upload = multer({
     },
 });
 export const verifyRouter = Router();
+verifyRouter.get("/tp", async (req, res) => {
+    const filiere = String(req.query.filiere ?? "").trim().toUpperCase();
+    let list = await listActiveTp();
+    if (filiere)
+        list = list.filter((tp) => tp.filiere === filiere);
+    return res.json(list);
+});
 verifyRouter.get("/tp/:code", async (req, res) => {
-    const tp = await lookupTp(req.params.code);
+    const code = decodeURIComponent(req.params.code);
+    const tp = await lookupTp(code);
     if (!tp)
         return res.status(404).json({ error: "Code TP inconnu." });
     return res.json(tp);
@@ -33,7 +36,7 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
         if (!req.file) {
             return res.status(400).json({ error: "Joignez votre quittance (PDF ou image)." });
         }
-        const tp = await lookupTp(codeTp);
+        const [tp, rules] = await Promise.all([lookupTp(codeTp), getValidationRules()]);
         if (!tp) {
             return res.status(400).json({ error: `Code TP « ${codeTp} » introuvable dans le catalogue.` });
         }
@@ -42,9 +45,6 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                 error: `Le TP ${codeTp} appartient à la filière ${tp.filiere}, pas ${filiere}.`,
             });
         }
-        const tmpPath = path.join(uploadDir, `${Date.now()}${path.extname(req.file.originalname)}`);
-        await fsPromises.writeFile(tmpPath, req.file.buffer);
-        const rules = await getValidationRules();
         const result = await verifyReceipt({
             nom: nom.trim(),
             prenom: prenom.trim(),
@@ -53,10 +53,10 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
             codeTp: tp.code,
             tpTitle: tp.title,
             expectedAmount: tp.montant,
-            filePath: tmpPath,
+            fileBuffer: req.file.buffer,
             mimeType: req.file.mimetype,
         }, rules);
-        const storagePath = await uploadQuittance(req.file.buffer, req.file.originalname, req.file.mimetype).catch(() => path.basename(tmpPath));
+        const storagePath = await uploadQuittance(req.file.buffer, req.file.originalname, req.file.mimetype).catch(() => `${Date.now()}-${req.file.originalname}`);
         if (!result.success) {
             if (isSupabaseConfigured()) {
                 await getSupabaseAdmin().from("failed_verifications").insert({
@@ -65,7 +65,6 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                     metadata: result.extracted ? { extracted: result.extracted, methods: result.extracted.method } : null,
                 });
             }
-            await fsPromises.unlink(tmpPath).catch(() => { });
             return res.status(422).json({ success: false, motif: result.motif });
         }
         if (isSupabaseConfigured()) {
@@ -79,7 +78,6 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                     nom, prenom, matricule, filiere, code_tp: tp.code,
                     motif: "Quittance déjà enregistrée.", fichier: storagePath,
                 });
-                await fsPromises.unlink(tmpPath).catch(() => { });
                 return res.status(409).json({ success: false, motif: "Cette quittance a déjà été utilisée." });
             }
             const datePaiement = result.extracted.datePaiement
@@ -107,7 +105,6 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                 .single();
             if (error)
                 throw new Error(error.message);
-            await fsPromises.unlink(tmpPath).catch(() => { });
             return res.json({
                 success: true,
                 message: "Paiement vérifié avec succès.",
@@ -125,7 +122,6 @@ verifyRouter.post("/", upload.single("quittance"), async (req, res) => {
                 },
             });
         }
-        await fsPromises.unlink(tmpPath).catch(() => { });
         return res.json({
             success: true,
             validationId: result.validationId,

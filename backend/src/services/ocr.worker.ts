@@ -7,7 +7,7 @@ async function getWorker(): Promise<Tesseract.Worker> {
     workerPromise = (async () => {
       const worker = await Tesseract.createWorker("fra", 1, { logger: () => {} });
       await worker.setParameters({
-        tessedit_pageseg_mode: "3",
+        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
       });
       return worker;
     })();

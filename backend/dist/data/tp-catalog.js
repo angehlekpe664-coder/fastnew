@@ -1,36 +1,73 @@
+import { createCache } from "../lib/cache.js";
 /** Catalogue TP local (fallback si Supabase indisponible) */
 export const TP_CATALOG = {
-    PHY1121: { title: "Physique Expérimental", filiere: "MIA", montant: 2500 },
-    PHY1322: { title: "Mécanique Expérimental", filiere: "MIA", montant: 2500 },
-    INF1422: { title: "LaTeX", filiere: "MIA", montant: 1500 },
-    INF1421: { title: "Python & Scilab", filiere: "MIA", montant: 1500 },
-    "PHY1225-1": { title: "Mécanique et Électricité", filiere: "PC", montant: 2500 },
-    "PHY1225-2": { title: "Optique", filiere: "PC", montant: 2500 },
-    "CHM1226-1": { title: "Chimie Générale", filiere: "PC", montant: 2500 },
-    "CHM1226-2": { title: "Chimie Minérale", filiere: "PC", montant: 2500 },
-    "CHM1226-3": { title: "Chimie Organique", filiere: "PC", montant: 2500 },
-    INF1120: { title: "Informatique", filiere: "PC", montant: 1500 },
-    CHM1321: { title: "Chimie Organique Descriptif", filiere: "PC", montant: 2500 },
-    CHM1323: { title: "Chimie des Matériaux", filiere: "PC", montant: 2500 },
-    CHM1325: { title: "Chimie des Solutions", filiere: "PC", montant: 2500 },
-    "PHY1426-2": { title: "Électronique", filiere: "PC", montant: 3000 },
-    "PHY1426-3": { title: "Thermodynamique", filiere: "PC", montant: 3000 },
+    PHY1322: { title: "Mécanique Expérimental", filiere: "MIA", montant: 1000, actif: true },
 };
+const TTL = 60_000;
+const tpByCode = new Map();
+const listCache = createCache(TTL);
+export function invalidateTpCache(code) {
+    if (code)
+        tpByCode.delete(code.toUpperCase());
+    else
+        tpByCode.clear();
+    listCache.clear();
+}
+function getTpCached(code) {
+    const hit = tpByCode.get(code);
+    if (!hit || hit.expires < Date.now())
+        return undefined;
+    return hit.value;
+}
+function setTpCached(code, value) {
+    tpByCode.set(code, { value, expires: Date.now() + TTL });
+}
 export async function lookupTp(code) {
     const normalized = code.trim().toUpperCase();
+    const cached = getTpCached(normalized);
+    if (cached !== undefined)
+        return cached;
     const { getSupabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
     if (isSupabaseConfigured()) {
         const { data } = await getSupabaseAdmin()
             .from("tp_catalog")
-            .select("code, title, filiere, montant")
+            .select("code, title, filiere, montant, actif")
             .eq("code", normalized)
             .eq("actif", true)
             .maybeSingle();
-        if (data)
+        if (data) {
+            setTpCached(normalized, data);
             return data;
+        }
     }
     const local = TP_CATALOG[normalized];
-    if (!local)
+    if (!local?.actif) {
+        setTpCached(normalized, null);
         return null;
-    return { code: normalized, ...local };
+    }
+    const entry = { code: normalized, ...local };
+    setTpCached(normalized, entry);
+    return entry;
+}
+export async function listActiveTp() {
+    const cached = listCache.get();
+    if (cached)
+        return cached;
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+    if (isSupabaseConfigured()) {
+        const { data } = await getSupabaseAdmin()
+            .from("tp_catalog")
+            .select("code, title, filiere, montant, actif")
+            .eq("actif", true)
+            .order("code");
+        if (data?.length) {
+            listCache.set(data);
+            return data;
+        }
+    }
+    const list = Object.entries(TP_CATALOG)
+        .filter(([, v]) => v.actif)
+        .map(([code, v]) => ({ code, ...v }));
+    listCache.set(list);
+    return list;
 }
