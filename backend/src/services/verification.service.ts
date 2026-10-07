@@ -21,6 +21,7 @@ export type ValidationRules = {
   requireTpCodeMatch: boolean;
   requireYearMatch: boolean;
   requireAmountConsistency: boolean;
+  requireNoModificationSoftware: boolean;
   customRules: Array<{ key: string; value: string; enabled: boolean }>;
 };
 
@@ -37,6 +38,7 @@ export const DEFAULT_RULES: ValidationRules = {
   requireTpCodeMatch: true,
   requireYearMatch: true,
   requireAmountConsistency: true,
+  requireNoModificationSoftware: true,
   customRules: [],
 };
 
@@ -154,6 +156,8 @@ function applyIntegrityChecks(
     expectedTp: codeTp,
     checkAmountConsistency: rules.requireAmountConsistency,
     checkTpConsistency: rules.requireTpCodeMatch,
+    checkNoModificationSoftware: rules.requireNoModificationSoftware !== false,
+    metadataInfo: extracted.metadataInfo,
   });
 
   extracted.integrity = integrity;

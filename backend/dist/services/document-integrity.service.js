@@ -1,5 +1,5 @@
 /**
- * Cohérence du contenu extrait (montants, codes TP) — sans blocage sur métadonnées PDF.
+ * Cohérence du contenu extrait (montants, codes TP) et métadonnées logiciels.
  */
 const AMOUNT_ARRETE = /somme\s+de\s*:[^(]*\(([0-9\s]{1,9})\)\s*FCFA/i;
 const AMOUNT_TABLE = /(?:^|\n)\s*([0-9]{1,3}(?:\s[0-9]{3})+)\s*(?:\n|\r|$)/gm;
@@ -108,11 +108,30 @@ function checkTpConsistency(tpCodes, expectedTp) {
         motif: `Plusieurs codes TP dans le même document : ${tpCodes.join(", ")}.`,
     };
 }
+function checkMetadataIntegrity(metadataInfo) {
+    if (!metadataInfo || !metadataInfo.isModified) {
+        return {
+            id: "metadata_software_tool",
+            label: "Intégrité des métadonnées logiciels",
+            passed: true,
+        };
+    }
+    const tools = metadataInfo.detectedEditingTools.join(", ");
+    return {
+        id: "metadata_software_tool",
+        label: "Intégrité des métadonnées logiciels",
+        passed: false,
+        motif: `Quittance refusée : le document a été modifié ou retouché via un logiciel tier (« ${tools} »).`,
+    };
+}
 export function analyzeDocumentIntegrity(rawText, options) {
     const checks = [];
     const qrUrl = rawText.match(/https:\/\/equittancetresor\.finances\.bj[^\s"'>\])]+/i)?.[0] ?? null;
     const amountSources = extractAmountSources(rawText, qrUrl);
     const tpCodesFound = extractTpCodes(rawText);
+    if (options.checkNoModificationSoftware !== false && options.metadataInfo) {
+        checks.push(checkMetadataIntegrity(options.metadataInfo));
+    }
     const amountResult = checkAmountConsistency(amountSources);
     if (options.checkAmountConsistency !== false) {
         checks.push({

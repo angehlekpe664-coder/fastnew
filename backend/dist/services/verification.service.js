@@ -16,6 +16,7 @@ export const DEFAULT_RULES = {
     requireTpCodeMatch: true,
     requireYearMatch: true,
     requireAmountConsistency: true,
+    requireNoModificationSoftware: true,
     customRules: [],
 };
 const rulesCache = createCache(120_000);
@@ -101,6 +102,8 @@ function applyIntegrityChecks(extracted, codeTp, rules) {
         expectedTp: codeTp,
         checkAmountConsistency: rules.requireAmountConsistency,
         checkTpConsistency: rules.requireTpCodeMatch,
+        checkNoModificationSoftware: rules.requireNoModificationSoftware !== false,
+        metadataInfo: extracted.metadataInfo,
     });
     extracted.integrity = integrity;
     if (integrity.resolvedAmount > 0) {

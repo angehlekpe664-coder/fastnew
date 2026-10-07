@@ -361,7 +361,7 @@ class _ReceiptScannerScreenState extends ConsumerState<ReceiptScannerScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        "Ajouter un reçu (Image ou PDF)",
+                        "Ajouter un reçu (PDF)",
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
                       ),
                       const SizedBox(height: 8),

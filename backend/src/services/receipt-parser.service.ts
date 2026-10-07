@@ -13,6 +13,17 @@ const jsQR = require("jsqr") as (
   height: number
 ) => { data: string } | null;
 
+export type MetadataInfo = {
+  producer?: string;
+  creator?: string;
+  modDate?: string;
+  creationDate?: string;
+  software?: string;
+  detectedEditingTools: string[];
+  isModified: boolean;
+  details?: string;
+};
+
 export type ParsedReceipt = {
   quittanceNumber: string;
   referencePaiement: string;
@@ -30,6 +41,7 @@ export type ParsedReceipt = {
   rawText: string;
   method: string[];
   integrity?: DocumentIntegrityReport;
+  metadataInfo?: MetadataInfo;
 };
 
 const TREASURY_QR =
@@ -172,14 +184,107 @@ export function parseTreasuryFields(text: string) {
   };
 }
 
+const EDITING_TOOLS_PATTERNS: Array<{ name: string; regex: RegExp }> = [
+  { name: "Photoshop", regex: /photoshop|adobe\s*photoshop/i },
+  { name: "Illustrator", regex: /illustrator|adobe\s*illustrator/i },
+  { name: "InDesign", regex: /indesign|adobe\s*indesign/i },
+  { name: "Acrobat Touchup / Pro", regex: /acrobat\s*touchup|adobe\s*acrobat\s*(?:pro|edit|touchup|dc|standard)/i },
+  { name: "Canva", regex: /canva/i },
+  { name: "GIMP", regex: /gimp/i },
+  { name: "Inkscape", regex: /inkscape/i },
+  { name: "Paint.NET", regex: /paint\.net/i },
+  { name: "Photopea", regex: /photopea/i },
+  { name: "Pixlr", regex: /pixlr/i },
+  { name: "Snapseed", regex: /snapseed/i },
+  { name: "PicsArt", regex: /picsart/i },
+  { name: "Affinity", regex: /affinity\s*(?:photo|publisher|designer)/i },
+  { name: "CorelDRAW", regex: /coreldraw|corel\s*draw/i },
+  { name: "PDF24", regex: /pdf24/i },
+  { name: "Sejda", regex: /sejda/i },
+  { name: "Smallpdf", regex: /smallpdf/i },
+  { name: "PDFescape", regex: /pdfescape/i },
+  { name: "Nitro PDF", regex: /nitro\s*(?:pdf|pro)/i },
+  { name: "Foxit Editor", regex: /foxit\s*(?:editor|phantom|phantompdf)/i },
+  { name: "PDFelement", regex: /pdfelement|wondershare/i },
+  { name: "iLovePDF", regex: /ilovepdf/i },
+  { name: "Soda PDF", regex: /sodapdf|soda\s*pdf/i },
+  { name: "Master PDF Editor", regex: /master\s*pdf\s*editor/i },
+  { name: "Xodo", regex: /xodo/i },
+  { name: "PDF Expert", regex: /pdf\s*expert/i },
+  { name: "PDF-XChange", regex: /pdf-xchange/i },
+  { name: "ABBYY FineReader", regex: /abbyy|finereader/i },
+  { name: "PDFedit", regex: /pdfedit|pdfmod|pdfsam|pdfill|easeus\s*pdf/i },
+  { name: "Microsoft Word (Édité/Converti)", regex: /microsoft\s*word|ms\s*word/i },
+  { name: "LibreOffice Draw", regex: /libreoffice\s*draw|openoffice\s*draw/i },
+];
+
+export function extractDocumentMetadata(
+  buffer: Buffer,
+  mimeType: string,
+  pdfInfo?: Record<string, any>
+): MetadataInfo {
+  const detected = new Set<string>();
+  let producer = "";
+  let creator = "";
+  let modDate = "";
+  let creationDate = "";
+
+  if (mimeType === "application/pdf") {
+    if (pdfInfo) {
+      producer = String(pdfInfo.Producer || pdfInfo.producer || "");
+      creator = String(pdfInfo.Creator || pdfInfo.creator || "");
+      modDate = String(pdfInfo.ModDate || pdfInfo.modDate || "");
+      creationDate = String(pdfInfo.CreationDate || pdfInfo.creationDate || "");
+    }
+
+    const headStr = buffer.toString("binary", 0, Math.min(buffer.length, 128 * 1024));
+    const tailStr =
+      buffer.length > 128 * 1024
+        ? buffer.toString("binary", buffer.length - 128 * 1024)
+        : "";
+    const combinedStr = producer + "\n" + creator + "\n" + headStr + "\n" + tailStr;
+
+    for (const tool of EDITING_TOOLS_PATTERNS) {
+      if (tool.regex.test(combinedStr)) {
+        detected.add(tool.name);
+      }
+    }
+  } else if (mimeType.startsWith("image/")) {
+    const headStr = buffer.toString("binary", 0, Math.min(buffer.length, 64 * 1024));
+    for (const tool of EDITING_TOOLS_PATTERNS) {
+      if (tool.regex.test(headStr)) {
+        detected.add(tool.name);
+      }
+    }
+  }
+
+  const detectedTools = Array.from(detected);
+  const isModified = detectedTools.length > 0;
+
+  return {
+    producer,
+    creator,
+    modDate,
+    creationDate,
+    software: detectedTools[0],
+    detectedEditingTools: detectedTools,
+    isModified,
+    details: isModified
+      ? `Outil(s) de modification détecté(s) : ${detectedTools.join(", ")}`
+      : undefined,
+  };
+}
+
 async function parseBuffer(buffer: Buffer, mimeType: string): Promise<ParsedReceipt> {
   const methods: string[] = [];
   let rawText = "";
   let qrUrl: string | null = null;
+  let pdfInfoObj: Record<string, any> | undefined;
 
   if (mimeType === "application/pdf") {
     const parsed = await pdfParse(buffer, { max: 4 });
     rawText = parsed.text;
+    pdfInfoObj = parsed.info;
     methods.push("pdf-parse");
     qrUrl = rawText.match(TREASURY_QR)?.[0] ?? null;
   } else if (mimeType.startsWith("image/")) {
@@ -203,6 +308,7 @@ async function parseBuffer(buffer: Buffer, mimeType: string): Promise<ParsedRece
     }
   }
 
+  const metadataInfo = extractDocumentMetadata(buffer, mimeType, pdfInfoObj);
   const fields = parseTreasuryFields(rawText);
   if (!qrUrl && fields.qrUrl) qrUrl = fields.qrUrl;
   if (qrUrl && !rawText.includes(qrUrl)) methods.push("qr-tresor");
@@ -223,6 +329,7 @@ async function parseBuffer(buffer: Buffer, mimeType: string): Promise<ParsedRece
     confidence: Math.min(confidence, 0.98),
     rawText: rawText.slice(0, 8000),
     method: methods,
+    metadataInfo,
   };
 }
 

@@ -18,6 +18,7 @@ type Rules = {
   requireTpCodeMatch: boolean;
   requireYearMatch: boolean;
   requireAmountConsistency: boolean;
+  requireNoModificationSoftware?: boolean;
 };
 
 export default function SettingsPage() {
@@ -76,6 +77,7 @@ export default function SettingsPage() {
             <Check label="Année dans période académique" checked={rules.requireYearMatch} onChange={(v) => u("requireYearMatch", v)} />
             <Check label="Montant conforme au TP" checked disabled />
             <Check label="Cohérence des montants (anti-falsification)" checked={rules.requireAmountConsistency} onChange={(v) => u("requireAmountConsistency", v)} />
+            <Check label="Détecter & refuser les retouches/outils de modification" checked={rules.requireNoModificationSoftware ?? true} onChange={(v) => u("requireNoModificationSoftware", v)} />
             <Check label="QR Trésor obligatoire" checked={rules.requireQrCode} onChange={(v) => u("requireQrCode", v)} />
             <Check label="Mentions officielles Trésor" checked={rules.requireOfficialLogo} onChange={(v) => u("requireOfficialLogo", v)} />
           </div>

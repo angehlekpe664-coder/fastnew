@@ -1,6 +1,8 @@
 /**
- * Cohérence du contenu extrait (montants, codes TP) — sans blocage sur métadonnées PDF.
+ * Cohérence du contenu extrait (montants, codes TP) et métadonnées logiciels.
  */
+
+import type { MetadataInfo } from "./receipt-parser.service.js";
 
 export type AmountSource = {
   source: "arrete" | "table" | "fcfa" | "montant_label" | "qr_param";
@@ -146,11 +148,31 @@ function checkTpConsistency(tpCodes: string[], expectedTp?: string): IntegrityCh
     motif: `Plusieurs codes TP dans le même document : ${tpCodes.join(", ")}.`,
   };
 }
+ 
+function checkMetadataIntegrity(metadataInfo?: MetadataInfo): IntegrityCheck {
+  if (!metadataInfo || !metadataInfo.isModified) {
+    return {
+      id: "metadata_software_tool",
+      label: "Intégrité des métadonnées logiciels",
+      passed: true,
+    };
+  }
+
+  const tools = metadataInfo.detectedEditingTools.join(", ");
+  return {
+    id: "metadata_software_tool",
+    label: "Intégrité des métadonnées logiciels",
+    passed: false,
+    motif: `Quittance refusée : le document a été modifié ou retouché via un logiciel tier (« ${tools} »).`,
+  };
+}
 
 export type IntegrityOptions = {
   expectedTp?: string;
   checkAmountConsistency?: boolean;
   checkTpConsistency?: boolean;
+  checkNoModificationSoftware?: boolean;
+  metadataInfo?: MetadataInfo;
 };
 
 export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOptions): DocumentIntegrityReport {
@@ -158,6 +180,10 @@ export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOpti
   const qrUrl = rawText.match(/https:\/\/equittancetresor\.finances\.bj[^\s"'>\])]+/i)?.[0] ?? null;
   const amountSources = extractAmountSources(rawText, qrUrl);
   const tpCodesFound = extractTpCodes(rawText);
+
+  if (options.checkNoModificationSoftware !== false && options.metadataInfo) {
+    checks.push(checkMetadataIntegrity(options.metadataInfo));
+  }
 
   const amountResult = checkAmountConsistency(amountSources);
   if (options.checkAmountConsistency !== false) {
