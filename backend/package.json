@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:security": "tsx src/tests/metadata-verification.test.ts && tsx src/tests/advanced-security.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

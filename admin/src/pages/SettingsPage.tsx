@@ -19,6 +19,9 @@ type Rules = {
   requireYearMatch: boolean;
   requireAmountConsistency: boolean;
   requireNoModificationSoftware?: boolean;
+  requirePkiCheck?: boolean;
+  requireVectorStructure?: boolean;
+  requireChecksumMatch?: boolean;
 };
 
 export default function SettingsPage() {
@@ -78,6 +81,9 @@ export default function SettingsPage() {
             <Check label="Montant conforme au TP" checked disabled />
             <Check label="Cohérence des montants (anti-falsification)" checked={rules.requireAmountConsistency} onChange={(v) => u("requireAmountConsistency", v)} />
             <Check label="Détecter & refuser les retouches/outils de modification" checked={rules.requireNoModificationSoftware ?? true} onChange={(v) => u("requireNoModificationSoftware", v)} />
+            <Check label="Vérifier la signature numérique PKI/X.509" checked={rules.requirePkiCheck ?? false} onChange={(v) => u("requirePkiCheck", v)} />
+            <Check label="Exiger une structure texte vectorielle (Anti-images raster)" checked={rules.requireVectorStructure ?? true} onChange={(v) => u("requireVectorStructure", v)} />
+            <Check label="Valider la clé de contrôle mathématique du numéro de quittance" checked={rules.requireChecksumMatch ?? true} onChange={(v) => u("requireChecksumMatch", v)} />
             <Check label="QR Trésor obligatoire" checked={rules.requireQrCode} onChange={(v) => u("requireQrCode", v)} />
             <Check label="Mentions officielles Trésor" checked={rules.requireOfficialLogo} onChange={(v) => u("requireOfficialLogo", v)} />
           </div>

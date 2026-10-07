@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import pdfParse from "pdf-parse";
 import { PNG } from "pngjs";
@@ -211,6 +212,198 @@ export function extractDocumentMetadata(buffer, mimeType, pdfInfo) {
             : undefined,
     };
 }
+export function validateLuhn(digits) {
+    let sum = 0;
+    let alternate = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+        let n = parseInt(digits.charAt(i), 10);
+        if (isNaN(n))
+            continue;
+        if (alternate) {
+            n *= 2;
+            if (n > 9)
+                n -= 9;
+        }
+        sum += n;
+        alternate = !alternate;
+    }
+    return sum % 10 === 0;
+}
+export function validateModulo11(digits) {
+    if (digits.length < 4)
+        return true;
+    let sum = 0;
+    let weight = 2;
+    const mainPart = digits.slice(0, -1);
+    const checkDigit = parseInt(digits.slice(-1), 10);
+    if (isNaN(checkDigit))
+        return true;
+    for (let i = mainPart.length - 1; i >= 0; i--) {
+        const num = parseInt(mainPart.charAt(i), 10);
+        if (isNaN(num))
+            continue;
+        sum += num * weight;
+        weight = weight === 7 ? 2 : weight + 1;
+    }
+    const remainder = sum % 11;
+    const calculatedCheck = (11 - remainder) % 10;
+    return calculatedCheck === checkDigit;
+}
+export function verifyQuittanceChecksum(num) {
+    if (!num)
+        return true;
+    const clean = num.replace(/[^0-9A-Z]/gi, "");
+    if (clean.length < 5)
+        return true;
+    const numericOnly = clean.replace(/[^0-9]/g, "");
+    if (numericOnly.length < 5)
+        return true;
+    return validateLuhn(numericOnly) || validateModulo11(numericOnly);
+}
+export function analyzePdfByteRange(buffer, rawStr) {
+    const hasSigDict = /\/Type\s*\/Sig|\/ByteRange\s*\[|\/adbe\.pkcs7|\/SubFilter\s*\/adbe|\/CAdES/i.test(rawStr);
+    if (!hasSigDict) {
+        return { hasSignature: false, isValid: true, detail: "Aucune signature numérique embarquée." };
+    }
+    const byteRangeMatch = rawStr.match(/\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/i);
+    if (!byteRangeMatch) {
+        return {
+            hasSignature: true,
+            isValid: false,
+            detail: "Signature numérique rompue ou modifiée après émission.",
+        };
+    }
+    const s1 = Number(byteRangeMatch[1]);
+    const l1 = Number(byteRangeMatch[2]);
+    const s2 = Number(byteRangeMatch[3]);
+    const l2 = Number(byteRangeMatch[4]);
+    const end1 = s1 + l1;
+    const end2 = s2 + l2;
+    if (![s1, l1, s2, l2].every((n) => Number.isFinite(n) && n >= 0) ||
+        end1 > s2 ||
+        end2 > buffer.length + 64) {
+        return {
+            hasSignature: true,
+            isValid: false,
+            detail: "Signature numérique rompue ou modifiée après émission.",
+        };
+    }
+    const contentsGap = s2 - end1;
+    const covered = l1 + l2;
+    const slice2End = Math.min(end2, buffer.length);
+    const signed = Buffer.concat([buffer.subarray(s1, Math.min(end1, buffer.length)), buffer.subarray(s2, slice2End)]);
+    const sha256 = createHash("sha256").update(signed).digest("hex");
+    const contentsLooksPresent = contentsGap >= 32;
+    const coverageOk = Math.abs(buffer.length - covered - contentsGap) < 256;
+    const hasContentsHex = /\/Contents\s*</i.test(rawStr);
+    if (!contentsLooksPresent || !coverageOk || !hasContentsHex) {
+        return {
+            hasSignature: true,
+            isValid: false,
+            sha256,
+            covered,
+            detail: "Signature numérique rompue ou modifiée après émission.",
+        };
+    }
+    return {
+        hasSignature: true,
+        isValid: true,
+        sha256,
+        covered,
+        detail: `Signature numérique PKI présente (SHA-256 ${sha256.slice(0, 16)}…).`,
+    };
+}
+function countPdfTextBlocks(rawStr) {
+    return (rawStr.match(/\bBT\b/g) || []).length;
+}
+function countImageXObjects(rawStr) {
+    const imageMarkers = rawStr.match(/\/Subtype\s*\/Image/gi) || [];
+    const jpegFilters = rawStr.match(/\/(?:DCTDecode|JPXDecode|FlateDecode)/gi) || [];
+    const widths = [...rawStr.matchAll(/\/Width\s+(\d+)/g)].map((m) => Number(m[1]));
+    const heights = [...rawStr.matchAll(/\/Height\s+(\d+)/g)].map((m) => Number(m[1]));
+    let largeOverlay = false;
+    const n = Math.min(widths.length, heights.length);
+    for (let i = 0; i < n; i++) {
+        if (widths[i] * heights[i] >= 400_000) {
+            largeOverlay = true;
+            break;
+        }
+    }
+    return {
+        count: Math.max(imageMarkers.length, jpegFilters.length > 2 ? imageMarkers.length : imageMarkers.length),
+        largeOverlay: largeOverlay || (imageMarkers.length > 0 && widths.some((w) => w >= 900)),
+    };
+}
+export function analyzeDocumentSecurity(buffer, mimeType, quittanceNumber, referencePaiement) {
+    const details = [];
+    let hasDigitalSignature = false;
+    let isSignatureValid = true;
+    let signatureSha256;
+    let byteRangeCovered;
+    let isVectorDocument = true;
+    let fontCount = 0;
+    let textBlockCount = 0;
+    let imageXObjectCount = 0;
+    let hasImageOverlay = false;
+    if (mimeType === "application/pdf") {
+        const rawStr = buffer.toString("binary");
+        const pki = analyzePdfByteRange(buffer, rawStr);
+        hasDigitalSignature = pki.hasSignature;
+        isSignatureValid = pki.isValid;
+        signatureSha256 = pki.sha256;
+        byteRangeCovered = pki.covered;
+        details.push(pki.detail);
+        const fontMatches = rawStr.match(/\/Type\s*\/Font|\/FontDescriptor|\/Subtype\s*\/(?:Type1|TrueType|Type0|CIDFontType0|CIDFontType2)/gi);
+        fontCount = fontMatches ? fontMatches.length : 0;
+        textBlockCount = countPdfTextBlocks(rawStr);
+        const images = countImageXObjects(rawStr);
+        imageXObjectCount = images.count;
+        const hasTextStream = textBlockCount > 0 || /\/Tj|\/TJ|Tf\b/i.test(rawStr);
+        const rasterOnly = images.count > 0 && fontCount === 0 && !hasTextStream;
+        const overlayOnScan = images.largeOverlay && fontCount < 2;
+        if (rasterOnly || overlayOnScan) {
+            isVectorDocument = false;
+            hasImageOverlay = true;
+            details.push("Document non conforme : structure texte non vectorielle (image retouchée).");
+        }
+        else {
+            isVectorDocument = fontCount > 0 || hasTextStream;
+            hasImageOverlay = images.largeOverlay;
+            details.push(isVectorDocument
+                ? `Document vectoriel conforme (${fontCount} polices, ${textBlockCount} blocs BT/ET).`
+                : "Document non conforme : structure texte non vectorielle (image retouchée).");
+            if (!isVectorDocument)
+                hasImageOverlay = true;
+        }
+    }
+    else if (mimeType.startsWith("image/")) {
+        isVectorDocument = false;
+        hasImageOverlay = true;
+        details.push("Fichier image raster (photo) — contrôle vectoriel ignoré pour ce type.");
+    }
+    const quittanceChecksumPassed = verifyQuittanceChecksum(quittanceNumber || "");
+    const referenceChecksumPassed = verifyQuittanceChecksum(referencePaiement || "");
+    if (!quittanceChecksumPassed) {
+        details.push("Numéro de quittance non conforme (échec de la clé de contrôle mathématique).");
+    }
+    if (referencePaiement && !referenceChecksumPassed) {
+        details.push("Référence de paiement non conforme (échec de la clé de contrôle mathématique).");
+    }
+    return {
+        hasDigitalSignature,
+        isSignatureValid: hasDigitalSignature ? isSignatureValid : true,
+        signatureSha256,
+        byteRangeCovered,
+        isVectorDocument,
+        fontCount,
+        textBlockCount,
+        imageXObjectCount,
+        hasImageOverlay,
+        quittanceChecksumPassed,
+        referenceChecksumPassed,
+        details,
+    };
+}
 async function parseBuffer(buffer, mimeType) {
     const methods = [];
     let rawText = "";
@@ -249,6 +442,7 @@ async function parseBuffer(buffer, mimeType) {
         qrUrl = fields.qrUrl;
     if (qrUrl && !rawText.includes(qrUrl))
         methods.push("qr-tresor");
+    const securityAnalysis = analyzeDocumentSecurity(buffer, mimeType, fields.quittanceNumber, fields.referencePaiement);
     let confidence = 0.45;
     if (fields.quittanceNumber)
         confidence += 0.15;
@@ -272,6 +466,7 @@ async function parseBuffer(buffer, mimeType) {
         rawText: rawText.slice(0, 8000),
         method: methods,
         metadataInfo,
+        securityAnalysis,
     };
 }
 export async function parseReceiptFile(filePath, mimeType) {

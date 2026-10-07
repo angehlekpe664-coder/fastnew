@@ -22,6 +22,9 @@ export type ValidationRules = {
   requireYearMatch: boolean;
   requireAmountConsistency: boolean;
   requireNoModificationSoftware: boolean;
+  requirePkiCheck: boolean;
+  requireVectorStructure: boolean;
+  requireChecksumMatch: boolean;
   customRules: Array<{ key: string; value: string; enabled: boolean }>;
 };
 
@@ -39,6 +42,9 @@ export const DEFAULT_RULES: ValidationRules = {
   requireYearMatch: true,
   requireAmountConsistency: true,
   requireNoModificationSoftware: true,
+  requirePkiCheck: false,
+  requireVectorStructure: true,
+  requireChecksumMatch: true,
   customRules: [],
 };
 
@@ -150,14 +156,20 @@ export type VerificationResult =
 function applyIntegrityChecks(
   extracted: ParsedReceipt,
   codeTp: string,
+  mimeType: string,
   rules: ValidationRules
 ): { ok: true; integrity: DocumentIntegrityReport } | { ok: false; motif: string; integrity: DocumentIntegrityReport } {
   const integrity = analyzeDocumentIntegrity(extracted.rawText, {
     expectedTp: codeTp,
+    mimeType,
     checkAmountConsistency: rules.requireAmountConsistency,
     checkTpConsistency: rules.requireTpCodeMatch,
     checkNoModificationSoftware: rules.requireNoModificationSoftware !== false,
+    checkPkiSignature: rules.requirePkiCheck === true,
+    checkVectorStructure: rules.requireVectorStructure !== false,
+    checkQuittanceChecksum: rules.requireChecksumMatch !== false,
     metadataInfo: extracted.metadataInfo,
+    securityAnalysis: extracted.securityAnalysis,
   });
 
   extracted.integrity = integrity;
@@ -194,7 +206,7 @@ export async function verifyReceipt(
     };
   }
 
-  const integrityResult = applyIntegrityChecks(extracted, input.codeTp, rules);
+  const integrityResult = applyIntegrityChecks(extracted, input.codeTp, input.mimeType, rules);
   if (!integrityResult.ok) {
     return {
       success: false,

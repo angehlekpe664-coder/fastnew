@@ -2,7 +2,7 @@
  * Cohérence du contenu extrait (montants, codes TP) et métadonnées logiciels.
  */
 
-import type { MetadataInfo } from "./receipt-parser.service.js";
+import type { MetadataInfo, SecurityAnalysis } from "./receipt-parser.service.js";
 
 export type AmountSource = {
   source: "arrete" | "table" | "fcfa" | "montant_label" | "qr_param";
@@ -148,7 +148,7 @@ function checkTpConsistency(tpCodes: string[], expectedTp?: string): IntegrityCh
     motif: `Plusieurs codes TP dans le même document : ${tpCodes.join(", ")}.`,
   };
 }
- 
+
 function checkMetadataIntegrity(metadataInfo?: MetadataInfo): IntegrityCheck {
   if (!metadataInfo || !metadataInfo.isModified) {
     return {
@@ -167,12 +167,70 @@ function checkMetadataIntegrity(metadataInfo?: MetadataInfo): IntegrityCheck {
   };
 }
 
+function checkPkiSignature(security?: SecurityAnalysis): IntegrityCheck {
+  if (!security || !security.hasDigitalSignature) {
+    return { id: "pki_signature", label: "Signature numérique PKI", passed: true };
+  }
+  if (!security.isSignatureValid) {
+    return {
+      id: "pki_signature",
+      label: "Signature numérique PKI",
+      passed: false,
+      motif: "Signature numérique rompue ou modifiée après émission.",
+    };
+  }
+  return { id: "pki_signature", label: "Signature numérique PKI", passed: true };
+}
+
+function checkVectorStructure(security?: SecurityAnalysis, mimeType?: string): IntegrityCheck {
+  if (!security || mimeType?.startsWith("image/")) {
+    return { id: "vector_structure", label: "Structure vectorielle", passed: true };
+  }
+  if (!security.isVectorDocument || security.hasImageOverlay && security.fontCount < 2) {
+    return {
+      id: "vector_structure",
+      label: "Structure vectorielle",
+      passed: false,
+      motif: "Document non conforme : structure texte non vectorielle (image retouchée).",
+    };
+  }
+  return { id: "vector_structure", label: "Structure vectorielle", passed: true };
+}
+
+function checkQuittanceChecksum(security?: SecurityAnalysis): IntegrityCheck {
+  if (!security) {
+    return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
+  }
+  if (!security.quittanceChecksumPassed) {
+    return {
+      id: "quittance_checksum",
+      label: "Clé de contrôle du numéro",
+      passed: false,
+      motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
+    };
+  }
+  if (security.referenceChecksumPassed === false) {
+    return {
+      id: "quittance_checksum",
+      label: "Clé de contrôle du numéro",
+      passed: false,
+      motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
+    };
+  }
+  return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
+}
+
 export type IntegrityOptions = {
   expectedTp?: string;
+  mimeType?: string;
   checkAmountConsistency?: boolean;
   checkTpConsistency?: boolean;
   checkNoModificationSoftware?: boolean;
+  checkPkiSignature?: boolean;
+  checkVectorStructure?: boolean;
+  checkQuittanceChecksum?: boolean;
   metadataInfo?: MetadataInfo;
+  securityAnalysis?: SecurityAnalysis;
 };
 
 export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOptions): DocumentIntegrityReport {
@@ -183,6 +241,18 @@ export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOpti
 
   if (options.checkNoModificationSoftware !== false && options.metadataInfo) {
     checks.push(checkMetadataIntegrity(options.metadataInfo));
+  }
+
+  if (options.checkPkiSignature) {
+    checks.push(checkPkiSignature(options.securityAnalysis));
+  }
+
+  if (options.checkVectorStructure) {
+    checks.push(checkVectorStructure(options.securityAnalysis, options.mimeType));
+  }
+
+  if (options.checkQuittanceChecksum) {
+    checks.push(checkQuittanceChecksum(options.securityAnalysis));
   }
 
   const amountResult = checkAmountConsistency(amountSources);

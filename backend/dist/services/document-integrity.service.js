@@ -124,6 +124,56 @@ function checkMetadataIntegrity(metadataInfo) {
         motif: `Quittance refusée : le document a été modifié ou retouché via un logiciel tier (« ${tools} »).`,
     };
 }
+function checkPkiSignature(security) {
+    if (!security || !security.hasDigitalSignature) {
+        return { id: "pki_signature", label: "Signature numérique PKI", passed: true };
+    }
+    if (!security.isSignatureValid) {
+        return {
+            id: "pki_signature",
+            label: "Signature numérique PKI",
+            passed: false,
+            motif: "Signature numérique rompue ou modifiée après émission.",
+        };
+    }
+    return { id: "pki_signature", label: "Signature numérique PKI", passed: true };
+}
+function checkVectorStructure(security, mimeType) {
+    if (!security || mimeType?.startsWith("image/")) {
+        return { id: "vector_structure", label: "Structure vectorielle", passed: true };
+    }
+    if (!security.isVectorDocument || security.hasImageOverlay && security.fontCount < 2) {
+        return {
+            id: "vector_structure",
+            label: "Structure vectorielle",
+            passed: false,
+            motif: "Document non conforme : structure texte non vectorielle (image retouchée).",
+        };
+    }
+    return { id: "vector_structure", label: "Structure vectorielle", passed: true };
+}
+function checkQuittanceChecksum(security) {
+    if (!security) {
+        return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
+    }
+    if (!security.quittanceChecksumPassed) {
+        return {
+            id: "quittance_checksum",
+            label: "Clé de contrôle du numéro",
+            passed: false,
+            motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
+        };
+    }
+    if (security.referenceChecksumPassed === false) {
+        return {
+            id: "quittance_checksum",
+            label: "Clé de contrôle du numéro",
+            passed: false,
+            motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
+        };
+    }
+    return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
+}
 export function analyzeDocumentIntegrity(rawText, options) {
     const checks = [];
     const qrUrl = rawText.match(/https:\/\/equittancetresor\.finances\.bj[^\s"'>\])]+/i)?.[0] ?? null;
@@ -131,6 +181,15 @@ export function analyzeDocumentIntegrity(rawText, options) {
     const tpCodesFound = extractTpCodes(rawText);
     if (options.checkNoModificationSoftware !== false && options.metadataInfo) {
         checks.push(checkMetadataIntegrity(options.metadataInfo));
+    }
+    if (options.checkPkiSignature) {
+        checks.push(checkPkiSignature(options.securityAnalysis));
+    }
+    if (options.checkVectorStructure) {
+        checks.push(checkVectorStructure(options.securityAnalysis, options.mimeType));
+    }
+    if (options.checkQuittanceChecksum) {
+        checks.push(checkQuittanceChecksum(options.securityAnalysis));
     }
     const amountResult = checkAmountConsistency(amountSources);
     if (options.checkAmountConsistency !== false) {

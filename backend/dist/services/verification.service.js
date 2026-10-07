@@ -17,6 +17,9 @@ export const DEFAULT_RULES = {
     requireYearMatch: true,
     requireAmountConsistency: true,
     requireNoModificationSoftware: true,
+    requirePkiCheck: false,
+    requireVectorStructure: true,
+    requireChecksumMatch: true,
     customRules: [],
 };
 const rulesCache = createCache(120_000);
@@ -97,13 +100,18 @@ function parseDate(value) {
     }
     return null;
 }
-function applyIntegrityChecks(extracted, codeTp, rules) {
+function applyIntegrityChecks(extracted, codeTp, mimeType, rules) {
     const integrity = analyzeDocumentIntegrity(extracted.rawText, {
         expectedTp: codeTp,
+        mimeType,
         checkAmountConsistency: rules.requireAmountConsistency,
         checkTpConsistency: rules.requireTpCodeMatch,
         checkNoModificationSoftware: rules.requireNoModificationSoftware !== false,
+        checkPkiSignature: rules.requirePkiCheck === true,
+        checkVectorStructure: rules.requireVectorStructure !== false,
+        checkQuittanceChecksum: rules.requireChecksumMatch !== false,
         metadataInfo: extracted.metadataInfo,
+        securityAnalysis: extracted.securityAnalysis,
     });
     extracted.integrity = integrity;
     if (integrity.resolvedAmount > 0) {
@@ -129,7 +137,7 @@ export async function verifyReceipt(input, rules) {
             motif: error instanceof Error ? error.message : "Impossible de lire le document.",
         };
     }
-    const integrityResult = applyIntegrityChecks(extracted, input.codeTp, rules);
+    const integrityResult = applyIntegrityChecks(extracted, input.codeTp, input.mimeType, rules);
     if (!integrityResult.ok) {
         return {
             success: false,
