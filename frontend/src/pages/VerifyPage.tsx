@@ -149,7 +149,7 @@ export default function VerifyPage() {
                   <div className="space-y-1.5">
                     <Label>Nom de famille</Label>
                     <Input
-                      placeholder="Ex: ACCROMBESSY"
+                      placeholder="Ex: ABALO"
                       autoComplete="family-name"
                       enterKeyHint="next"
                       value={form.nom}
@@ -160,7 +160,7 @@ export default function VerifyPage() {
                   <div className="space-y-1.5">
                     <Label>Prénom(s)</Label>
                     <Input
-                      placeholder="Ex: Branel Vianney"
+                      placeholder="Ex: Jean"
                       autoComplete="given-name"
                       enterKeyHint="next"
                       value={form.prenom}
@@ -172,7 +172,7 @@ export default function VerifyPage() {
                 <div className="space-y-1.5">
                   <Label>Matricule étudiant</Label>
                   <Input
-                    placeholder="Ex: INF1421"
+                    placeholder="Ex:1621089"
                     autoComplete="off"
                     enterKeyHint="next"
                     value={form.matricule}
