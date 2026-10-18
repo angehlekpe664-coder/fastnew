@@ -46,8 +46,6 @@ export type SecurityAnalysis = {
   textBlockCount: number;
   imageXObjectCount: number;
   hasImageOverlay: boolean;
-  quittanceChecksumPassed: boolean;
-  referenceChecksumPassed: boolean;
   pdfForensics?: PdfForensicReport;
   details?: string[];
 };
@@ -386,52 +384,6 @@ export function inspectPdfForensics(buffer: Buffer): PdfForensicReport {
   };
 }
 
-export function validateLuhn(digits: string): boolean {
-  let sum = 0;
-  let alternate = false;
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let n = parseInt(digits.charAt(i), 10);
-    if (isNaN(n)) continue;
-    if (alternate) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alternate = !alternate;
-  }
-  return sum % 10 === 0;
-}
-
-export function validateModulo11(digits: string): boolean {
-  if (digits.length < 4) return true;
-  let sum = 0;
-  let weight = 2;
-  const mainPart = digits.slice(0, -1);
-  const checkDigit = parseInt(digits.slice(-1), 10);
-  if (isNaN(checkDigit)) return true;
-
-  for (let i = mainPart.length - 1; i >= 0; i--) {
-    const num = parseInt(mainPart.charAt(i), 10);
-    if (isNaN(num)) continue;
-    sum += num * weight;
-    weight = weight === 7 ? 2 : weight + 1;
-  }
-  const remainder = sum % 11;
-  const calculatedCheck = (11 - remainder) % 10;
-  return calculatedCheck === checkDigit;
-}
-
-export function verifyQuittanceChecksum(num: string): boolean {
-  if (!num) return true;
-  const clean = num.replace(/[^0-9A-Z]/gi, "");
-  if (clean.length < 5) return true;
-
-  const numericOnly = clean.replace(/[^0-9]/g, "");
-  if (numericOnly.length < 5) return true;
-
-  return validateLuhn(numericOnly) || validateModulo11(numericOnly);
-}
-
 export function analyzePdfByteRange(buffer: Buffer, rawStr: string): {
   hasSignature: boolean;
   isValid: boolean;
@@ -526,9 +478,7 @@ function countImageXObjects(rawStr: string): { count: number; largeOverlay: bool
 
 export function analyzeDocumentSecurity(
   buffer: Buffer,
-  mimeType: string,
-  quittanceNumber?: string,
-  referencePaiement?: string
+  mimeType: string
 ): SecurityAnalysis {
   const details: string[] = [];
   let hasDigitalSignature = false;
@@ -589,15 +539,6 @@ export function analyzeDocumentSecurity(
     details.push("Fichier image raster (photo) — contrôle vectoriel ignoré pour ce type.");
   }
 
-  const quittanceChecksumPassed = verifyQuittanceChecksum(quittanceNumber || "");
-  const referenceChecksumPassed = verifyQuittanceChecksum(referencePaiement || "");
-  if (!quittanceChecksumPassed) {
-    details.push("Numéro de quittance non conforme (échec de la clé de contrôle mathématique).");
-  }
-  if (referencePaiement && !referenceChecksumPassed) {
-    details.push("Référence de paiement non conforme (échec de la clé de contrôle mathématique).");
-  }
-
   return {
     hasDigitalSignature,
     isSignatureValid: hasDigitalSignature ? isSignatureValid : true,
@@ -608,8 +549,6 @@ export function analyzeDocumentSecurity(
     textBlockCount,
     imageXObjectCount,
     hasImageOverlay,
-    quittanceChecksumPassed,
-    referenceChecksumPassed,
     pdfForensics,
     details,
   };
@@ -653,12 +592,7 @@ async function parseBuffer(buffer: Buffer, mimeType: string): Promise<ParsedRece
   if (!qrUrl && fields.qrUrl) qrUrl = fields.qrUrl;
   if (qrUrl && !rawText.includes(qrUrl)) methods.push("qr-tresor");
 
-  const securityAnalysis = analyzeDocumentSecurity(
-    buffer,
-    mimeType,
-    fields.quittanceNumber,
-    fields.referencePaiement
-  );
+  const securityAnalysis = analyzeDocumentSecurity(buffer, mimeType);
 
   let confidence = 0.45;
   if (fields.quittanceNumber) confidence += 0.15;
@@ -690,68 +624,28 @@ export async function parseReceiptBuffer(buffer: Buffer, mimeType: string): Prom
   return parseBuffer(buffer, mimeType);
 }
 
-/** Vérifie le QR Trésor — timeout court pour ne pas bloquer la réponse. */
+/** Vérifie uniquement le domaine vers lequel pointe le QR Code du Trésor. */
 export async function verifyTreasuryQr(
   qrUrl: string,
-  extracted: Pick<ParsedReceipt, "quittanceNumber" | "amount" | "referencePaiement" | "studentName" | "tpCodeFromReceipt">
+  treasuryDomain: string = "equittancetresor.finances.bj"
 ): Promise<{ ok: boolean; verifiedOnline: boolean; motif?: string }> {
-  if (!qrUrl.includes("equittancetresor.finances.bj")) {
-    return { ok: false, verifiedOnline: false, motif: "QR Code non officiel (domaine Trésor invalide)." };
+  if (!qrUrl) {
+    return { ok: false, verifiedOnline: false, motif: "QR Code absent." };
   }
-  if (!/verify=[a-f0-9]+/i.test(qrUrl)) {
-    return { ok: false, verifiedOnline: false, motif: "QR Code Trésor invalide (token de vérification absent)." };
-  }
-
   try {
-    const res = await fetch(qrUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-      signal: AbortSignal.timeout(2500),
-    });
-    if (!res.ok) return { ok: true, verifiedOnline: false };
+    const url = new URL(qrUrl);
+    const host = url.hostname.toLowerCase();
+    const expected = treasuryDomain.toLowerCase();
 
-    const html = await res.text();
-    if (!html.trim()) return { ok: true, verifiedOnline: false };
-
-    if (extracted.quittanceNumber) {
-      const digits = extracted.quittanceNumber.replace(/[^0-9A-Z]/gi, "");
-      if (!html.replace(/[^0-9A-Z]/gi, "").includes(digits.slice(0, 8))) {
-        return {
-          ok: false,
-          verifiedOnline: true,
-          motif: "Le QR Trésor ne confirme pas le numéro de quittance (mismatch avec le site officiel).",
-        };
-      }
+    if (!host.includes(expected)) {
+      return {
+        ok: false,
+        verifiedOnline: false,
+        motif: `Domaine QR Code non officiel (${host} ≠ attendu ${expected}).`,
+      };
     }
-
-    if (extracted.studentName) {
-      const names = extracted.studentName.split(/\s+/).filter((n) => n.length >= 3);
-      const cleanHtml = html.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const matchName = names.some((n) =>
-        cleanHtml.includes(n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
-      );
-      if (names.length >= 2 && !matchName) {
-        return {
-          ok: false,
-          verifiedOnline: true,
-          motif: "Incohérence identité : le nom figurant sur le site du Trésor ne correspond pas à la quittance.",
-        };
-      }
-    }
-
-    if (extracted.amount > 0) {
-      const amounts = [...html.matchAll(/([0-9]{1,3}(?:[\s.][0-9]{3})+|[0-9]{3,6})\s*(?:FCFA|F\.?C\.?F\.?A)/gi)];
-      const pageAmounts = amounts.map((m) => parseInt(m[1].replace(/[^0-9]/g, ""), 10)).filter(Boolean);
-      if (pageAmounts.length && !pageAmounts.includes(extracted.amount)) {
-        return {
-          ok: false,
-          verifiedOnline: true,
-          motif: `Montant sur le site Trésor (${pageAmounts[0]} FCFA) ≠ quittance (${extracted.amount} FCFA).`,
-        };
-      }
-    }
-
     return { ok: true, verifiedOnline: true };
   } catch {
-    return { ok: true, verifiedOnline: false };
+    return { ok: false, verifiedOnline: false, motif: "URL du QR Code invalide." };
   }
 }

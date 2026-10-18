@@ -24,7 +24,6 @@ export type ValidationRules = {
   requireNoModificationSoftware: boolean;
   requirePkiCheck: boolean;
   requireVectorStructure: boolean;
-  requireChecksumMatch: boolean;
   customRules: Array<{ key: string; value: string; enabled: boolean }>;
 };
 
@@ -44,7 +43,6 @@ export const DEFAULT_RULES: ValidationRules = {
   requireNoModificationSoftware: true,
   requirePkiCheck: false,
   requireVectorStructure: true,
-  requireChecksumMatch: true,
   customRules: [],
 };
 
@@ -167,7 +165,6 @@ function applyIntegrityChecks(
     checkNoModificationSoftware: rules.requireNoModificationSoftware !== false,
     checkPkiSignature: rules.requirePkiCheck === true,
     checkVectorStructure: rules.requireVectorStructure !== false,
-    checkQuittanceChecksum: rules.requireChecksumMatch !== false,
     metadataInfo: extracted.metadataInfo,
     securityAnalysis: extracted.securityAnalysis,
   });
@@ -311,15 +308,7 @@ export async function verifyReceipt(
   }
 
   if (extracted.qrUrl) {
-    if (!extracted.qrUrl.includes(rules.treasuryDomain)) {
-      return {
-        success: false,
-        motif: "QR Code non officiel (domaine Trésor invalide).",
-        extracted,
-      };
-    }
-
-    const qrCheck = await verifyTreasuryQr(extracted.qrUrl, extracted);
+    const qrCheck = await verifyTreasuryQr(extracted.qrUrl, rules.treasuryDomain);
     extracted.qrVerifiedOnline = qrCheck.verifiedOnline;
     if (!qrCheck.ok) {
       return { success: false, motif: qrCheck.motif ?? "Échec vérification QR Trésor.", extracted };

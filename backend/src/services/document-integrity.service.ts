@@ -213,29 +213,6 @@ function checkVectorStructure(security?: SecurityAnalysis, mimeType?: string): I
   return { id: "vector_structure", label: "Structure vectorielle", passed: true };
 }
 
-function checkQuittanceChecksum(security?: SecurityAnalysis): IntegrityCheck {
-  if (!security) {
-    return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
-  }
-  if (!security.quittanceChecksumPassed) {
-    return {
-      id: "quittance_checksum",
-      label: "Clé de contrôle du numéro",
-      passed: false,
-      motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
-    };
-  }
-  if (security.referenceChecksumPassed === false) {
-    return {
-      id: "quittance_checksum",
-      label: "Clé de contrôle du numéro",
-      passed: false,
-      motif: "Numéro de quittance non conforme (échec de la clé de contrôle mathématique).",
-    };
-  }
-  return { id: "quittance_checksum", label: "Clé de contrôle du numéro", passed: true };
-}
-
 export type IntegrityOptions = {
   expectedTp?: string;
   mimeType?: string;
@@ -244,7 +221,6 @@ export type IntegrityOptions = {
   checkNoModificationSoftware?: boolean;
   checkPkiSignature?: boolean;
   checkVectorStructure?: boolean;
-  checkQuittanceChecksum?: boolean;
   metadataInfo?: MetadataInfo;
   securityAnalysis?: SecurityAnalysis;
 };
@@ -269,10 +245,6 @@ export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOpti
 
   if (options.checkVectorStructure) {
     checks.push(checkVectorStructure(options.securityAnalysis, options.mimeType));
-  }
-
-  if (options.checkQuittanceChecksum) {
-    checks.push(checkQuittanceChecksum(options.securityAnalysis));
   }
 
   const amountResult = checkAmountConsistency(amountSources);
