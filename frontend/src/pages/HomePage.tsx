@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Shield, FileSearch, BadgeCheck, Landmark, FileText } from "lucide-react";
+import { ArrowRight, FileSearch, BadgeCheck, Landmark, FileText } from "lucide-react";
 import { PublicLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 
