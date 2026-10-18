@@ -22,7 +22,7 @@ const upload = multer({
     } else {
       cb(
         new Error(
-          "Format de fichier non supporté. Seuls les fichiers PDF, JPEG, PNG et WEBP sont acceptés."
+          "Format de fichier non supporté. Seuls les fichiers PDF originaux émis par le Trésor Public sont acceptés (les images, photos et captures d'écran sont refusées)."
         )
       );
     }
@@ -101,7 +101,7 @@ verifyRouter.post(
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
           return res.status(400).json({
-            error: "Fichier trop volumineux. La taille maximale est de 10 Mo.",
+            error: "Fichier PDF trop volumineux. La taille maximale est de 10 Mo.",
           });
         }
         return res.status(400).json({
@@ -132,7 +132,7 @@ verifyRouter.post(
       if (!req.file) {
         return res
           .status(400)
-          .json({ error: "Joignez votre quittance (PDF ou image)." });
+          .json({ error: "Veuillez joindre le fichier PDF original de votre quittance." });
       }
 
       const cleanCodeTp = codeTp.trim().toUpperCase();

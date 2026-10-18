@@ -114,17 +114,26 @@ export async function adminFetch<T>(path: string, init?: RequestInit, retried = 
   return parseResponse<T>(res);
 }
 
-export async function downloadExport(format: "csv" | "xlsx" | "pdf") {
+export async function downloadExport(
+  format: "csv" | "xlsx" | "pdf",
+  filters?: { filiere?: string; codeTp?: string; q?: string }
+) {
   const token = await getAccessToken();
+  const params = new URLSearchParams();
+  if (filters?.filiere) params.set("filiere", filters.filiere);
+  if (filters?.codeTp) params.set("codeTp", filters.codeTp);
+  if (filters?.q) params.set("q", filters.q);
 
-  const res = await fetch(`${API}/api/admin/export/${format}`, {
+  const queryString = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`${API}/api/admin/export/${format}${queryString}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `export.${format === "xlsx" ? "xlsx" : format === "csv" ? "csv" : "txt"}`;
+  const filterSuffix = [filters?.filiere, filters?.codeTp].filter(Boolean).join("-") || "tous";
+  a.download = `etudiants-valides-${filterSuffix}.${format === "xlsx" ? "xlsx" : format === "csv" ? "csv" : "txt"}`;
   a.click();
   URL.revokeObjectURL(url);
 }

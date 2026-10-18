@@ -31,11 +31,6 @@ export const config = {
   warmupOcr: process.env.WARMUP_OCR !== "false",
 
   maxFileSize: 10 * 1024 * 1024, // 10 Mo max
-  allowedMimeTypes: [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "application/pdf",
-  ],
-  allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".pdf"],
+  allowedMimeTypes: ["application/pdf"],
+  allowedExtensions: [".pdf"],
 };
