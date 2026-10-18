@@ -1,5 +1,5 @@
 /**
- * Cohérence du contenu extrait (montants, codes TP) et métadonnées logiciels.
+ * Cohérence du contenu extrait (montants, codes TP), métadonnées logiciels et analyse forensique anti-falsification.
  */
 
 import type { MetadataInfo, SecurityAnalysis } from "./receipt-parser.service.js";
@@ -163,8 +163,24 @@ function checkMetadataIntegrity(metadataInfo?: MetadataInfo): IntegrityCheck {
     id: "metadata_software_tool",
     label: "Intégrité des métadonnées logiciels",
     passed: false,
-    motif: `Quittance refusée : le document a été modifié ou retouché via un logiciel tier (« ${tools} »).`,
+    motif: `Quittance refusée : le document a été modifié ou retouché via un logiciel tiers (« ${tools} »).`,
   };
+}
+
+function checkPdfForensics(security?: SecurityAnalysis): IntegrityCheck {
+  if (!security || !security.pdfForensics) {
+    return { id: "pdf_forensics", label: "Contrôle forensique anti-falsification PDF", passed: true };
+  }
+  if (security.pdfForensics.isTampered) {
+    const reason = security.pdfForensics.tamperingReasons[0];
+    return {
+      id: "pdf_forensics",
+      label: "Contrôle forensique anti-falsification PDF",
+      passed: false,
+      motif: `Quittance refusée : falsification ou altération du document détectée. (${reason})`,
+    };
+  }
+  return { id: "pdf_forensics", label: "Contrôle forensique anti-falsification PDF", passed: true };
 }
 
 function checkPkiSignature(security?: SecurityAnalysis): IntegrityCheck {
@@ -186,7 +202,7 @@ function checkVectorStructure(security?: SecurityAnalysis, mimeType?: string): I
   if (!security || mimeType?.startsWith("image/")) {
     return { id: "vector_structure", label: "Structure vectorielle", passed: true };
   }
-  if (!security.isVectorDocument || security.hasImageOverlay && security.fontCount < 2) {
+  if (!security.isVectorDocument || (security.hasImageOverlay && security.fontCount < 2)) {
     return {
       id: "vector_structure",
       label: "Structure vectorielle",
@@ -241,6 +257,10 @@ export function analyzeDocumentIntegrity(rawText: string, options: IntegrityOpti
 
   if (options.checkNoModificationSoftware !== false && options.metadataInfo) {
     checks.push(checkMetadataIntegrity(options.metadataInfo));
+  }
+
+  if (options.securityAnalysis) {
+    checks.push(checkPdfForensics(options.securityAnalysis));
   }
 
   if (options.checkPkiSignature) {

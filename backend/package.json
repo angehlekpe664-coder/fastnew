@@ -10,7 +10,7 @@
     "start:prod": "NODE_ENV=production node dist/index.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test:security": "tsx src/tests/metadata-verification.test.ts && tsx src/tests/advanced-security.test.ts"
+    "test:security": "tsx src/tests/metadata-verification.test.ts && tsx src/tests/advanced-security.test.ts && tsx src/tests/falsification-forensics.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

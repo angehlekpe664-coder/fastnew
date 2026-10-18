@@ -25,6 +25,17 @@ export type MetadataInfo = {
   details?: string;
 };
 
+export type PdfForensicReport = {
+  isTampered: boolean;
+  tamperingReasons: string[];
+  editorMarkersFound: string[];
+  hasFragmentedText: boolean;
+  hasIncrementalUpdates: boolean;
+  hasGenerationsAboveZero: boolean;
+  maxObjectId: number;
+  objectCount: number;
+};
+
 export type SecurityAnalysis = {
   hasDigitalSignature: boolean;
   isSignatureValid: boolean;
@@ -37,6 +48,7 @@ export type SecurityAnalysis = {
   hasImageOverlay: boolean;
   quittanceChecksumPassed: boolean;
   referenceChecksumPassed: boolean;
+  pdfForensics?: PdfForensicReport;
   details?: string[];
 };
 
@@ -230,6 +242,7 @@ const EDITING_TOOLS_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "PDF Expert", regex: /pdf\s*expert/i },
   { name: "PDF-XChange", regex: /pdf-xchange/i },
   { name: "ABBYY FineReader", regex: /abbyy|finereader/i },
+  { name: "Iceni PDF Editor", regex: /iceni/i },
   { name: "PDFedit", regex: /pdfedit|pdfmod|pdfsam|pdfill|easeus\s*pdf/i },
   { name: "Microsoft Word (Édité/Converti)", regex: /microsoft\s*word|ms\s*word/i },
   { name: "LibreOffice Draw", regex: /libreoffice\s*draw|openoffice\s*draw/i },
@@ -289,6 +302,87 @@ export function extractDocumentMetadata(
     details: isModified
       ? `Outil(s) de modification détecté(s) : ${detectedTools.join(", ")}`
       : undefined,
+  };
+}
+
+export function inspectPdfForensics(buffer: Buffer): PdfForensicReport {
+  const tamperingReasons: string[] = [];
+  const editorMarkersFound: string[] = [];
+  const rawStr = buffer.toString("binary");
+
+  const editorMarkers = [
+    { name: "Iceni Editor Tag (IceniOID/IceniObject)", regex: /Iceni(?:OID|Object|CID)/i },
+    { name: "Iceni Layout Tag (Galley/Para)", regex: /\b(?:Galley|Para)\b/i },
+    { name: "Police modifiée ICUID", regex: /\/ICUID\s*/i },
+    { name: "Tag iLovePDF", regex: /ilovepdf/i },
+    { name: "Tag PDF24", regex: /pdf24/i },
+    { name: "Tag Sejda", regex: /sejda/i },
+    { name: "Tag PDFescape", regex: /pdfescape/i },
+    { name: "Tag Smallpdf", regex: /smallpdf/i },
+  ];
+
+  for (const marker of editorMarkers) {
+    if (marker.regex.test(rawStr)) {
+      editorMarkersFound.push(marker.name);
+      tamperingReasons.push(`Traces d'édition PDF détectées (« ${marker.name} »)`);
+    }
+  }
+
+  const fragmentedTextRegex = /\(([^\)]{2,20})\)\s*Tj\s*\(([^\)]{1,5})\)\s*Tj/gi;
+  const matches = [...rawStr.matchAll(fragmentedTextRegex)];
+  let hasFragmentedText = false;
+
+  for (const match of matches) {
+    const part1 = match[1];
+    const part2 = match[2];
+    if (
+      /quittance|26014|INF\d*|matricule|partie|001D/i.test(part1) ||
+      /^[0-9]{1,3}$/.test(part2)
+    ) {
+      hasFragmentedText = true;
+      tamperingReasons.push(
+        `Découpage et surimpression de texte détectés sur les champs sensibles (« ${part1} » + « ${part2} »)`
+      );
+      break;
+    }
+  }
+
+  const genAboveZeroRegex = /\b\d+\s+([1-9]\d*)\s+obj\b/g;
+  const hasGenerationsAboveZero = genAboveZeroRegex.test(rawStr);
+  if (hasGenerationsAboveZero) {
+    tamperingReasons.push("Réécriture de la structure PDF (objets révisés avec numéro de génération > 0)");
+  }
+
+  const hasIncrementalUpdates = /\/Prev\s+\d+/i.test(rawStr) || (rawStr.match(/%%EOF/g) || []).length > 1;
+  if (hasIncrementalUpdates) {
+    tamperingReasons.push("Modification post-émission détectée (mise à jour incrémentale XRef / révision ultérieure)");
+  }
+
+  const objMatches = [...rawStr.matchAll(/\b(\d+)\s+\d+\s+obj\b/g)];
+  const objectCount = objMatches.length;
+  let maxObjectId = 0;
+  for (const m of objMatches) {
+    const id = parseInt(m[1], 10);
+    if (id > maxObjectId) maxObjectId = id;
+  }
+
+  if (maxObjectId > 100 && objectCount < 60) {
+    tamperingReasons.push(
+      `Structure d'objets anormale : ID d'objet max élevé (${maxObjectId}) pour seulement ${objectCount} objets`
+    );
+  }
+
+  const isTampered = tamperingReasons.length > 0;
+
+  return {
+    isTampered,
+    tamperingReasons,
+    editorMarkersFound,
+    hasFragmentedText,
+    hasIncrementalUpdates,
+    hasGenerationsAboveZero,
+    maxObjectId,
+    objectCount,
   };
 }
 
@@ -446,9 +540,15 @@ export function analyzeDocumentSecurity(
   let textBlockCount = 0;
   let imageXObjectCount = 0;
   let hasImageOverlay = false;
+  let pdfForensics: PdfForensicReport | undefined;
 
   if (mimeType === "application/pdf") {
     const rawStr = buffer.toString("binary");
+
+    pdfForensics = inspectPdfForensics(buffer);
+    if (pdfForensics.isTampered) {
+      details.push(...pdfForensics.tamperingReasons);
+    }
 
     const pki = analyzePdfByteRange(buffer, rawStr);
     hasDigitalSignature = pki.hasSignature;
@@ -510,6 +610,7 @@ export function analyzeDocumentSecurity(
     hasImageOverlay,
     quittanceChecksumPassed,
     referenceChecksumPassed,
+    pdfForensics,
     details,
   };
 }
@@ -592,7 +693,7 @@ export async function parseReceiptBuffer(buffer: Buffer, mimeType: string): Prom
 /** Vérifie le QR Trésor — timeout court pour ne pas bloquer la réponse. */
 export async function verifyTreasuryQr(
   qrUrl: string,
-  extracted: Pick<ParsedReceipt, "quittanceNumber" | "amount" | "referencePaiement">
+  extracted: Pick<ParsedReceipt, "quittanceNumber" | "amount" | "referencePaiement" | "studentName" | "tpCodeFromReceipt">
 ): Promise<{ ok: boolean; verifiedOnline: boolean; motif?: string }> {
   if (!qrUrl.includes("equittancetresor.finances.bj")) {
     return { ok: false, verifiedOnline: false, motif: "QR Code non officiel (domaine Trésor invalide)." };
@@ -602,7 +703,10 @@ export async function verifyTreasuryQr(
   }
 
   try {
-    const res = await fetch(qrUrl, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(qrUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      signal: AbortSignal.timeout(2500),
+    });
     if (!res.ok) return { ok: true, verifiedOnline: false };
 
     const html = await res.text();
@@ -614,7 +718,22 @@ export async function verifyTreasuryQr(
         return {
           ok: false,
           verifiedOnline: true,
-          motif: "Le QR Trésor ne confirme pas le numéro de quittance.",
+          motif: "Le QR Trésor ne confirme pas le numéro de quittance (mismatch avec le site officiel).",
+        };
+      }
+    }
+
+    if (extracted.studentName) {
+      const names = extracted.studentName.split(/\s+/).filter((n) => n.length >= 3);
+      const cleanHtml = html.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const matchName = names.some((n) =>
+        cleanHtml.includes(n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      );
+      if (names.length >= 2 && !matchName) {
+        return {
+          ok: false,
+          verifiedOnline: true,
+          motif: "Incohérence identité : le nom figurant sur le site du Trésor ne correspond pas à la quittance.",
         };
       }
     }
