@@ -31,7 +31,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="min-w-0 text-left leading-tight">
               <div className="truncate text-sm sm:text-[15px]">UniPay Vérification</div>
-              <div className="truncate text-[10px] font-normal text-muted sm:text-[11px]">Faculté des Sciences — UAC</div>
+              <div className="truncate text-[10px] font-normal text-muted sm:text-[11px]">Faculté des Sciences et techniques — UAC</div>
             </div>
           </Link>
           <div className="flex shrink-0 items-center gap-0.5">

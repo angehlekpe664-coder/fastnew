@@ -31,7 +31,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="text-left leading-tight">
               <div className="text-sm">UniPay Vérification</div>
-              <div className="text-[11px] font-normal text-muted">Faculté des Sciences — UAC</div>
+              <div className="text-[11px] font-normal text-muted">Faculté des Sciences et techniques — UAC</div>
             </div>
           </Link>
           <div className="flex items-center gap-1">

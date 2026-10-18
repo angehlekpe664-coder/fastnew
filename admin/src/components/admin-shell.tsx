@@ -87,7 +87,7 @@ export function AdminShell() {
           </div>
           <div>
             <div className="text-sm font-bold text-foreground">UniPay Admin</div>
-            <div className="text-[10px] text-muted">Faculté des Sciences — UAC</div>
+            <div className="text-[10px] text-muted">Faculté des Sciences et techniques — UAC</div>
           </div>
         </div>
         <nav className="space-y-1">

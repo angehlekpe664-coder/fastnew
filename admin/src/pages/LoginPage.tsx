@@ -32,7 +32,7 @@ export default function LoginPage() {
             <Shield className="h-6 w-6" />
           </div>
           <CardTitle className="mt-3 text-foreground">Administration UniPay</CardTitle>
-          <p className="text-xs text-muted">Accès réservé — Faculté des Sciences UAC</p>
+          <p className="text-xs text-muted">Accès réservé — Faculté des Sciences et techniques UAC</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-4">

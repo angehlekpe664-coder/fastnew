@@ -35,7 +35,7 @@ export const DEFAULT_RULES: ValidationRules = {
   allowedDateFrom: null,
   allowedDateTo: null,
   treasuryDomain: "equittancetresor.finances.bj",
-  requireQrCode: true,
+  requireQrCode: false, // Assoupli pour accepter les PDF officiels dont le QR est une image
   requireOfficialLogo: true,
   requireTpCodeMatch: true,
   requireYearMatch: true,
@@ -199,7 +199,7 @@ export async function verifyReceipt(
   } catch (error) {
     return {
       success: false,
-      motif: error instanceof Error ? error.message : "Impossible de lire le document.",
+      motif: error instanceof Error ? error.message : "Impossible de lire le document PDF.",
     };
   }
 
@@ -217,12 +217,12 @@ export async function verifyReceipt(
     extracted.hasOfficialLogo ||
     extracted.quittanceNumber ||
     extracted.qrUrl ||
-    /partie\s+versante/i.test(extracted.rawText);
+    /partie\s+versante|tr[ée]sor/i.test(extracted.rawText);
 
-  if (!isTreasuryDoc && extracted.confidence < 0.55) {
+  if (!isTreasuryDoc && extracted.confidence < 0.45) {
     return {
       success: false,
-      motif: "Document illisible ou format non reconnu. Utilisez une quittance officielle du Trésor (PDF ou photo nette).",
+      motif: "Document illisible ou format non reconnu. Veuillez fournir une quittance PDF officielle du Trésor Public.",
       extracted,
     };
   }
@@ -230,7 +230,7 @@ export async function verifyReceipt(
   if (!extracted.studentName) {
     return {
       success: false,
-      motif: "Impossible de lire le nom sur la quittance (Partie versante).",
+      motif: "Impossible de lire le nom sur la quittance (ligne 'Partie versante').",
       extracted,
     };
   }
@@ -244,7 +244,6 @@ export async function verifyReceipt(
   }
 
   if (rules.requireTpCodeMatch) {
-    const tpOnReceipt = extracted.tpCodeFromReceipt || input.codeTp;
     if (!extracted.tpCodeFromReceipt) {
       return {
         success: false,
@@ -298,13 +297,9 @@ export async function verifyReceipt(
   if (rules.requireOfficialLogo && !extracted.hasOfficialLogo) {
     return {
       success: false,
-      motif: "Mentions officielles du Trésor Public non détectées.",
+      motif: "Mentions officielles du Trésor Public non détectées dans le PDF.",
       extracted,
     };
-  }
-
-  if (rules.requireQrCode && !extracted.qrUrl) {
-    return { success: false, motif: "QR Code officiel du Trésor introuvable.", extracted };
   }
 
   if (extracted.qrUrl) {
