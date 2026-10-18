@@ -1,20 +1,17 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { config } from "../config.js";
 
 let _adminClient: SupabaseClient | null = null;
 
 function getServiceRoleKey(): string {
-  return (
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.SUPABASE_SECRET_KEY ??
-    ""
-  );
+  return config.supabase.serviceRoleKey;
 }
 
 /** Client serveur — service_role UNIQUEMENT, jamais exposé au frontend */
 export function getSupabaseAdmin(): SupabaseClient {
   if (_adminClient) return _adminClient;
 
-  const url = process.env.SUPABASE_URL;
+  const url = config.supabase.url;
   const key = getServiceRoleKey();
 
   if (!url || !key) {
@@ -33,8 +30,8 @@ export function getSupabaseAdmin(): SupabaseClient {
 
 /** Client anon/publishable — vérification JWT utilisateur admin */
 export function getSupabaseAnon(): SupabaseClient {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY;
+  const url = config.supabase.url;
+  const key = config.supabase.anonKey;
 
   if (!url || !key) {
     throw new Error("SUPABASE_URL et SUPABASE_ANON_KEY requis.");
@@ -46,9 +43,9 @@ export function getSupabaseAnon(): SupabaseClient {
 }
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(process.env.SUPABASE_URL && getServiceRoleKey());
+  return Boolean(config.supabase.url && getServiceRoleKey());
 }
 
 export function isSupabaseClientConfigured(): boolean {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
+  return Boolean(config.supabase.url && config.supabase.anonKey);
 }

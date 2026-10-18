@@ -1,17 +1,15 @@
 import express from "express";
 import cors from "cors";
-import path from "path";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { config } from "./config.js";
 import { verifyRouter } from "./routes/verify.js";
 import { adminRouter } from "./routes/admin/index.js";
-
-const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173,http://localhost:5174")
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 function isAllowedOrigin(origin: string): boolean {
-  if (allowedOrigins.includes(origin)) return true;
-  if (process.env.NODE_ENV === "production" && /\.onrender\.com$/i.test(new URL(origin).host)) {
+  if (config.corsOrigins.includes(origin)) return true;
+  if (config.isProduction() && /\.onrender\.com$/i.test(new URL(origin).host)) {
     return true;
   }
   return false;
@@ -20,6 +18,24 @@ function isAllowedOrigin(origin: string): boolean {
 export function createApp() {
   const app = express();
 
+  // En-têtes de sécurité HTTP
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
+
+  // Rate Limiting anti-abus (200 requêtes / 15 min par IP)
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Trop de requêtes, veuillez réessayer plus tard." },
+  });
+  app.use(limiter);
+
+  // Configuration CORS centralisée
   app.use(
     cors({
       origin: (origin, cb) => {
@@ -29,18 +45,30 @@ export function createApp() {
       credentials: true,
     })
   );
-  app.use(express.json({ limit: "2mb" }));
-  app.use("/uploads", express.static(path.resolve(process.env.UPLOAD_DIR ?? "./uploads")));
 
+  // Body Parsing avec limitation stricte
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+
+  // Service statique sécurisé pour le dossier d'uploads
+  app.use(
+    "/uploads",
+    express.static(config.uploadDir, {
+      dotfiles: "ignore",
+      index: false,
+      maxAge: "1d",
+    })
+  );
+
+  // Vérification de l'état de l'API
   app.get("/api/health", (_req, res) => {
-    const hasUrl = Boolean(process.env.SUPABASE_URL);
-    const hasAnon = Boolean(process.env.SUPABASE_ANON_KEY);
-    const hasServiceRole = Boolean(
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY
-    );
+    const hasUrl = Boolean(config.supabase.url);
+    const hasAnon = Boolean(config.supabase.anonKey);
+    const hasServiceRole = Boolean(config.supabase.serviceRoleKey);
     res.json({
       status: "ok",
       service: "UniPay Verify API",
+      env: config.nodeEnv,
       supabase: {
         url: hasUrl,
         anonKey: hasAnon,
@@ -51,13 +79,13 @@ export function createApp() {
     });
   });
 
+  // Enregistrement des routes
   app.use("/api/verify", verifyRouter);
   app.use("/api/admin", adminRouter);
 
-  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error(err);
-    res.status(500).json({ error: err.message || "Erreur serveur." });
-  });
+  // Gestion centralisée des routes 404 et des erreurs
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

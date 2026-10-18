@@ -7,6 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:prod": "NODE_ENV=production node dist/index.js",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test:security": "tsx src/tests/metadata-verification.test.ts && tsx src/tests/advanced-security.test.ts"
   },
   "dependencies": {
@@ -15,6 +18,8 @@
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
     "jpeg-js": "^0.4.4",
     "jsqr": "^1.4.0",
     "multer": "^1.4.5-lts.1",

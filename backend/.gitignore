@@ -1,0 +1,26 @@
+# Dépendances
+node_modules/
+
+# Compilation / Outputs
+dist/
+
+# Clés secrètes et variables d'environnement locales
+.env
+.env.local
+.env.*.local
+
+# Modèles OCR lourds et bases locales temporaires
+*.traineddata
+*.db
+*.sqlite
+
+# Fichiers téléversés et temporaires
+uploads/*
+!uploads/.gitkeep
+*.log
+logs/
+
+# Fichiers OS & IDE
+.DS_Store
+.vscode/
+.idea/
