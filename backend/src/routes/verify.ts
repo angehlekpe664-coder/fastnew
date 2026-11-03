@@ -235,7 +235,7 @@ verifyRouter.post(
 
       if (existingResult.data) {
         logger.warn(
-          `Quittance déjà utilisée (${quittanceKey}) par ${body.matricule}`
+          `Votre inscription a été déjà prise en compte. (${quittanceKey}) par ${body.matricule}`
         );
         persistFailureAsync({
           ...body,

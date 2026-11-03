@@ -78,7 +78,7 @@ export default function FailuresPage() {
       return <Badge variant="warning">IDENTITÉ NON MATCHÉE</Badge>;
     }
     if (m.includes("déjà") || m.includes("enregistrée")) {
-      return <Badge variant="secondary">QUITTANCE DÉJÀ UTILISÉE</Badge>;
+      return <Badge variant="secondary">Votre inscription a été déjà prise en compte.</Badge>;
     }
     return <Badge variant="danger">REJETÉ</Badge>;
   };
