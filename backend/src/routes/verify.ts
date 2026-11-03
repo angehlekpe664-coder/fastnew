@@ -235,7 +235,7 @@ verifyRouter.post(
 
       if (existingResult.data) {
         logger.warn(
-          `Votre inscription a été déjà prise en compte. (${quittanceKey}) par ${body.matricule}`
+          `Quittance déjà utilisée (${quittanceKey}) par ${body.matricule}`
         );
         persistFailureAsync({
           ...body,
@@ -248,7 +248,7 @@ verifyRouter.post(
         });
         return res
           .status(409)
-          .json({ success: false, motif: "Cette quittance a déjà été utilisée." });
+          .json({ success: false, motif: "Votre inscription a été déjà prise en compte.." });
       }
 
       const datePaiement = result.extracted.datePaiement
