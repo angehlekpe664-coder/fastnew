@@ -140,23 +140,23 @@ export default function TpCatalogPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in space-y-5">
       <PageHeader
         title="Codes TP vérifiables"
-        description={`${activeCount} TP actif(s) — seuls les codes actifs acceptent des quittances sur le site public.`}
+        description={`${activeCount} TP actif(s) sur ${rows.length} répertorié(s)`}
       />
 
-      <Card className="glass-panel mb-6 border-primary/20">
+      <Card className="glass-panel border-amber-500/20 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base text-foreground">
-            <Plus className="h-4 w-4 text-primary" /> Ajouter un code TP
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <Plus className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Ajouter un nouveau Code TP
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={saveNew} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Field label="Code TP">
               <Input
-                className="border-border bg-secondary font-mono uppercase"
+                className="border-border bg-card font-mono font-bold uppercase"
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
                 placeholder="PHY1322"
@@ -165,7 +165,7 @@ export default function TpCatalogPage() {
             </Field>
             <Field label="Filière">
               <Select
-                className="border-border bg-secondary"
+                className="border-border bg-card font-semibold"
                 value={form.filiere}
                 onChange={(e) => setForm({ ...form, filiere: e.target.value })}
               >
@@ -174,18 +174,18 @@ export default function TpCatalogPage() {
                 <option value="CBG">CBG</option>
               </Select>
             </Field>
-            <Field label="Intitulé">
+            <Field label="Intitulé du TP">
               <Input
-                className="border-border bg-secondary"
+                className="border-border bg-card"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="Mécanique Expérimental"
+                placeholder="Mécanique Expérimentale"
                 required
               />
             </Field>
-            <Field label="Montant FCFA">
+            <Field label="Montant (FCFA)">
               <Input
-                className="border-border bg-secondary"
+                className="border-border bg-card font-bold"
                 type="number"
                 min={100}
                 value={form.montant}
@@ -193,38 +193,40 @@ export default function TpCatalogPage() {
               />
             </Field>
             <div className="flex items-end">
-              <Button type="submit" className="w-full" disabled={saving}>
+              <Button type="submit" className="w-full h-10 font-semibold" disabled={saving}>
                 {saving ? "Ajout..." : "Activer le TP"}
               </Button>
             </div>
           </form>
-          {msg && <p className="mt-3 text-sm text-success">{msg}</p>}
-          {err && <p className="mt-3 text-sm text-danger">{err}</p>}
+          {msg && <p className="mt-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{msg}</p>}
+          {err && <p className="mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{err}</p>}
         </CardContent>
       </Card>
 
-      <div className="mb-4 flex gap-2">
+      <div className="flex gap-2">
         {(["all", "active", "inactive"] as const).map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-              filter === f ? "bg-primary/20 text-primary" : "bg-secondary text-muted hover:text-foreground"
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              filter === f
+                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40"
+                : "bg-card border border-border text-muted hover:text-foreground"
             }`}
           >
-            {f === "all" ? "Tous" : f === "active" ? "Actifs" : "Inactifs"}
+            {f === "all" ? "Tous les TP" : f === "active" ? "Seulement Actifs" : "Inactifs"}
           </button>
         ))}
       </div>
 
-      <Card className="glass-panel">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground">
-            <BookOpen className="h-5 w-5 text-accent" /> Catalogue ({filtered.length})
+      <Card className="glass-panel border-border shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Catalogue des TP ({filtered.length})
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2.5">
           {loading &&
             [1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-16" />
@@ -236,29 +238,42 @@ export default function TpCatalogPage() {
             filtered.map((row) => (
               <div
                 key={row.code}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition hover:bg-card-hover"
+                className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/60 p-4 transition-all duration-200 hover:border-amber-500/30 hover:bg-card-hover shadow-xs"
               >
-                <div className="min-w-[88px] font-mono text-sm font-bold text-accent">{row.code}</div>
-                <div className="min-w-[140px] flex-1">
-                  <div className="font-medium text-foreground">{row.title}</div>
-                  <div className="text-xs text-muted">{row.filiere}</div>
+                <div className="min-w-[90px]">
+                  <span className="font-mono text-sm font-bold text-amber-600 dark:text-amber-400">{row.code}</span>
                 </div>
-                <Input
-                  className="w-28 border-border bg-secondary text-sm"
-                  type="number"
-                  min={100}
-                  defaultValue={row.montant}
-                  onBlur={(e) => updateMontant(row, +e.target.value)}
-                />
-                <Badge variant={row.actif ? "success" : "secondary"}>{row.actif ? "Actif" : "Inactif"}</Badge>
-                <Button variant="outline" size="sm" onClick={() => toggle(row)}>
+                <div className="min-w-[140px] flex-1">
+                  <div className="font-bold text-foreground text-sm">{row.title}</div>
+                  <div className="text-xs font-medium text-muted">Filière {row.filiere}</div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted font-medium">Prix :</span>
+                  <Input
+                    className="w-28 border-border bg-secondary text-xs font-bold"
+                    type="number"
+                    min={100}
+                    defaultValue={row.montant}
+                    onBlur={(e) => updateMontant(row, +e.target.value)}
+                  />
+                  <span className="text-xs text-muted font-medium">FCFA</span>
+                </div>
+                <Badge variant={row.actif ? "success" : "secondary"} className="font-bold">
+                  {row.actif ? "ACTIF" : "INACTIF"}
+                </Badge>
+                <Button
+                  variant={row.actif ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => toggle(row)}
+                  className="gap-1.5 font-semibold"
+                >
                   {row.actif ? (
                     <>
-                      <PowerOff className="h-3.5 w-3.5" /> Désactiver
+                      <PowerOff className="h-3.5 w-3.5 text-rose-500" /> Désactiver
                     </>
                   ) : (
                     <>
-                      <Power className="h-3.5 w-3.5" /> Activer
+                      <Power className="h-3.5 w-3.5 text-emerald-500" /> Activer
                     </>
                   )}
                 </Button>
@@ -273,7 +288,7 @@ export default function TpCatalogPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted">{label}</Label>
+      <Label className="text-xs font-semibold text-muted">{label}</Label>
       {children}
     </div>
   );
