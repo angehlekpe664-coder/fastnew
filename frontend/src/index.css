@@ -17,6 +17,9 @@
   --color-border: #e2e8f0;
   --color-accent: #0284c7;
   --font-sans: "Inter", system-ui, sans-serif;
+}
+
+:root {
   color-scheme: light;
 }
 
