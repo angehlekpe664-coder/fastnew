@@ -6,24 +6,35 @@
   --color-background: #f8fafc;
   --color-foreground: #0f172a;
   --color-card: #ffffff;
-  --color-primary: #0056d2;
+  --color-card-hover: #f1f5f9;
+  --color-primary: #059669;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #e8f1ff;
+  --color-secondary: #f1f5f9;
   --color-muted: #64748b;
-  --color-success: #059669;
-  --color-danger: #dc2626;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #d97706;
   --color-border: #e2e8f0;
+  --color-accent: #0284c7;
   --font-sans: "Inter", system-ui, sans-serif;
+  color-scheme: light;
 }
 
 .dark {
-  --color-background: #0b1220;
-  --color-foreground: #f1f5f9;
-  --color-card: #111827;
-  --color-primary: #3b82f6;
+  --color-background: #060a12;
+  --color-foreground: #e8edf5;
+  --color-card: #0f172a;
+  --color-card-hover: #1e293b;
+  --color-primary: #10b981;
+  --color-primary-foreground: #022c22;
   --color-secondary: #1e293b;
   --color-muted: #94a3b8;
-  --color-border: #1f2937;
+  --color-success: #34d399;
+  --color-danger: #f87171;
+  --color-warning: #fbbf24;
+  --color-border: #1e293b;
+  --color-accent: #38bdf8;
+  color-scheme: dark;
 }
 
 * {
@@ -47,9 +58,10 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Évite le zoom iOS sur les champs (< 16px) */
+/* Évite le zoom automatique iOS sur les champs de saisie (< 16px) */
 input,
 select,
 textarea {
@@ -72,10 +84,11 @@ textarea {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Animations fluides */
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -84,7 +97,25 @@ textarea {
 }
 
 .animate-fade-in {
-  animation: fade-in 0.4s ease-out both;
+  animation: fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Ombrages multi-couches optimisés & Effets de survol */
+.glass-card {
+  background: color-mix(in srgb, var(--color-card) 92%, transparent);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px) saturate(180%);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  box-shadow: 0 14px 36px -10px rgba(16, 185, 129, 0.15);
+}
+
+.shadow-glow {
+  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.22);
 }
 
 @media print {

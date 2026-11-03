@@ -11,6 +11,7 @@ import {
   FileText,
   X,
   AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { PublicLayout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ export default function VerifyPage() {
   const [tpLoading, setTpLoading] = useState(false);
   const [tpInfo, setTpInfo] = useState<TpInfo | null>(null);
   const [form, setForm] = useState({ nom: "", prenom: "", matricule: "", filiere: "MIA", codeTp: "" });
+  const [confirmMatricule, setConfirmMatricule] = useState("");
 
   const update = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -60,8 +62,18 @@ export default function VerifyPage() {
     if (found) update("filiere", found.filiere);
   };
 
+  const matriculesMatch =
+    form.matricule.trim().length >= 4 &&
+    form.matricule.trim() === confirmMatricule.trim();
+
   const canNext = () => {
-    if (step === 0) return form.nom.trim().length >= 2 && form.prenom.trim().length >= 2 && form.matricule.trim().length >= 4;
+    if (step === 0) {
+      return (
+        form.nom.trim().length >= 2 &&
+        form.prenom.trim().length >= 2 &&
+        matriculesMatch
+      );
+    }
     if (step === 1) return tpInfo !== null;
     return Boolean(file);
   };
@@ -145,6 +157,15 @@ export default function VerifyPage() {
                   <User className="h-5 w-5 shrink-0" />
                   <h2 className="text-lg font-bold">Informations de l'étudiant</h2>
                 </div>
+
+                {/* Notice obligatoire explicative */}
+                <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300/60 bg-amber-50/80 p-3.5 text-xs leading-relaxed text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <span className="font-bold">Avis important :</span> Vos informations personnelles (<strong>Nom, Prénom, Matricule</strong>) doivent être renseignées <strong>exactement conformément aux informations figurant sur votre quittance</strong> du Trésor Public.
+                  </div>
+                </div>
+
                 <div className="grid gap-3">
                   <div className="space-y-1.5">
                     <Label>Nom de famille</Label>
@@ -169,10 +190,11 @@ export default function VerifyPage() {
                     />
                   </div>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label>Matricule étudiant</Label>
                   <Input
-                    placeholder="Ex:1621089"
+                    placeholder="Ex: 1621089"
                     autoComplete="off"
                     enterKeyHint="next"
                     value={form.matricule}
@@ -180,6 +202,46 @@ export default function VerifyPage() {
                     className="h-11 font-mono text-base tracking-wider uppercase sm:h-10 sm:text-sm"
                   />
                 </div>
+
+                {/* Champ de confirmation du matricule */}
+                <div className="space-y-1.5">
+                  <Label className="flex items-center justify-between">
+                    <span>Confirmer le matricule</span>
+                    {confirmMatricule.trim().length > 0 && (
+                      <span className="text-[11px] font-normal">
+                        {matriculesMatch ? (
+                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Identiques
+                          </span>
+                        ) : (
+                          <span className="text-red-600 dark:text-red-400 font-medium">
+                            Ne correspondent pas
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </Label>
+                  <Input
+                    placeholder="Ressaisissez votre matricule"
+                    autoComplete="off"
+                    enterKeyHint="next"
+                    value={confirmMatricule}
+                    onChange={(e) => setConfirmMatricule(e.target.value.toUpperCase())}
+                    className={`h-11 font-mono text-base tracking-wider uppercase sm:h-10 sm:text-sm transition ${
+                      confirmMatricule.trim().length > 0
+                        ? matriculesMatch
+                          ? "border-emerald-500 focus:border-emerald-500"
+                          : "border-red-500 focus:border-red-500"
+                        : ""
+                    }`}
+                  />
+                  {confirmMatricule.trim().length > 0 && !matriculesMatch && (
+                    <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                      Veuillez vérifier votre matricule : les deux champs doivent être strictement identiques.
+                    </p>
+                  )}
+                </div>
+
                 <div className="space-y-1.5">
                   <Label>Filière</Label>
                   <Select
