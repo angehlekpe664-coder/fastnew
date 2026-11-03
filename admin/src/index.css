@@ -2,7 +2,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
+:root {
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-hover: #f1f5f9;
+  --color-primary: #059669;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-muted: #64748b;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+  --color-warning: #d97706;
+  --color-border: #e2e8f0;
+  --color-accent: #0284c7;
+  --font-sans: "Inter", system-ui, sans-serif;
+  color-scheme: light;
+}
+
+.dark {
   --color-background: #060a12;
   --color-foreground: #e8edf5;
   --color-card: #0c1220;
@@ -16,7 +34,7 @@
   --color-warning: #fbbf24;
   --color-border: #1e2a42;
   --color-accent: #38bdf8;
-  --font-sans: "Inter", system-ui, sans-serif;
+  color-scheme: dark;
 }
 
 * {
@@ -27,10 +45,6 @@ html,
 body,
 #root {
   min-height: 100%;
-}
-
-html {
-  color-scheme: dark;
 }
 
 body {
@@ -66,7 +80,7 @@ body {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #121a2e 25%, #1a2540 50%, #121a2e 75%);
+  background: linear-gradient(90deg, var(--color-card-hover) 25%, var(--color-secondary) 50%, var(--color-card-hover) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s ease-in-out infinite;
   border-radius: 0.75rem;
@@ -74,12 +88,12 @@ body {
 
 .admin-gradient {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 185, 129, 0.12), transparent),
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 185, 129, 0.1), transparent),
     var(--color-background);
 }
 
 .glass-panel {
-  background: color-mix(in srgb, var(--color-card) 92%, transparent);
+  background: color-mix(in srgb, var(--color-card) 94%, transparent);
   border: 1px solid var(--color-border);
   backdrop-filter: blur(8px);
 }

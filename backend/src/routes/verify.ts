@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
+import rateLimit from "express-rate-limit";
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
 import { getValidationRules, verifyReceipt, uploadQuittance } from "../services/verification.service.js";
 import { lookupTp, listActiveTp } from "../data/tp-catalog.js";
@@ -29,14 +30,27 @@ const upload = multer({
   },
 });
 
+const verifySubmissionLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Trop de tentatives de vérification. Veuillez patienter 10 minutes avant de réesssayez." },
+});
+
 export const verifyRouter = Router();
 
 const TP_HEADERS = { "Cache-Control": "no-cache, no-store, must-revalidate" };
 
+function sanitizeInput(str: unknown, maxLen = 100): string {
+  if (typeof str !== "string") return "";
+  return str.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, maxLen);
+}
+
 verifyRouter.get("/tp", async (req, res, next) => {
   try {
     res.set(TP_HEADERS);
-    const filiere = String(req.query.filiere ?? "").trim().toUpperCase();
+    const filiere = sanitizeInput(req.query.filiere, 20).toUpperCase();
     let list = await listActiveTp();
     if (filiere) list = list.filter((tp) => tp.filiere === filiere);
     return res.json(list);
@@ -48,7 +62,7 @@ verifyRouter.get("/tp", async (req, res, next) => {
 verifyRouter.get("/tp/:code", async (req, res, next) => {
   try {
     res.set(TP_HEADERS);
-    const code = decodeURIComponent(req.params.code);
+    const code = sanitizeInput(decodeURIComponent(req.params.code), 30);
     const tp = await lookupTp(code);
     if (!tp) return res.status(404).json({ error: "Code TP inconnu." });
     return res.json(tp);
@@ -96,6 +110,7 @@ function persistFailureAsync(payload: {
 
 verifyRouter.post(
   "/",
+  verifySubmissionLimiter,
   (req, res, next) => {
     upload.single("quittance")(req, res, (err) => {
       if (err instanceof multer.MulterError) {
@@ -115,15 +130,13 @@ verifyRouter.post(
   },
   async (req, res, next) => {
     try {
-      const { nom, prenom, matricule, filiere, codeTp } = req.body ?? {};
+      const nom = sanitizeInput(req.body?.nom, 80);
+      const prenom = sanitizeInput(req.body?.prenom, 80);
+      const matricule = sanitizeInput(req.body?.matricule, 40).toUpperCase();
+      const filiere = sanitizeInput(req.body?.filiere, 20).toUpperCase();
+      const codeTp = sanitizeInput(req.body?.codeTp, 30).toUpperCase();
 
-      if (
-        !nom || typeof nom !== "string" || !nom.trim() ||
-        !prenom || typeof prenom !== "string" || !prenom.trim() ||
-        !matricule || typeof matricule !== "string" || !matricule.trim() ||
-        !filiere || typeof filiere !== "string" || !filiere.trim() ||
-        !codeTp || typeof codeTp !== "string" || !codeTp.trim()
-      ) {
+      if (!nom || !prenom || !matricule || !filiere || !codeTp) {
         return res.status(400).json({
           error: "Nom, prénom, matricule, filière et code TP sont obligatoires.",
         });
@@ -135,32 +148,32 @@ verifyRouter.post(
           .json({ error: "Veuillez joindre le fichier PDF original de votre quittance." });
       }
 
-      const cleanCodeTp = codeTp.trim().toUpperCase();
-      const cleanFiliere = filiere.trim().toUpperCase();
+      const magicBytes = req.file.buffer.subarray(0, 5).toString("ascii");
+      if (magicBytes !== "%PDF-") {
+        logger.warn(`Fichier non-PDF déguisé reçu pour ${matricule}`);
+        return res.status(400).json({
+          error: "Le fichier soumis n'est pas un document PDF valide (en-tête binaire non conforme).",
+        });
+      }
 
       const [tp, rules] = await Promise.all([
-        lookupTp(cleanCodeTp),
+        lookupTp(codeTp),
         getValidationRules(),
       ]);
 
       if (!tp) {
         return res.status(400).json({
-          error: `Code TP « ${cleanCodeTp} » introuvable dans le catalogue.`,
+          error: `Code TP « ${codeTp} » introuvable dans le catalogue.`,
         });
       }
 
-      if (tp.filiere !== cleanFiliere && !cleanFiliere.startsWith(tp.filiere)) {
+      if (tp.filiere !== filiere && !filiere.startsWith(tp.filiere)) {
         return res.status(400).json({
-          error: `Le TP ${cleanCodeTp} appartient à la filière ${tp.filiere}, pas ${cleanFiliere}.`,
+          error: `Le TP ${codeTp} appartient à la filière ${tp.filiere}, pas ${filiere}.`,
         });
       }
 
-      const body = {
-        nom: nom.trim(),
-        prenom: prenom.trim(),
-        matricule: matricule.trim().toUpperCase(),
-        filiere: cleanFiliere,
-      };
+      const body = { nom, prenom, matricule, filiere };
 
       logger.info(
         `Début de vérification pour ${body.matricule} (TP ${tp.code})`
@@ -248,7 +261,7 @@ verifyRouter.post(
         });
         return res
           .status(409)
-          .json({ success: false, motif: "Votre inscription a été déjà prise en compte.." });
+          .json({ success: false, motif: "Cette quittance a déjà été utilisée." });
       }
 
       const datePaiement = result.extracted.datePaiement
@@ -323,13 +336,14 @@ verifyRouter.get("/status/:validationId", async (req, res, next) => {
     }
 
     res.set("Cache-Control", "private, max-age=30");
+    const valId = sanitizeInput(req.params.validationId, 50);
 
     const { data } = await getSupabaseAdmin()
       .from("validated_students")
       .select(
         "validation_id, nom, prenom, matricule, filiere, code_tp, tp_title, numero_quittance, montant, date_verification, statut"
       )
-      .eq("validation_id", req.params.validationId)
+      .eq("validation_id", valId)
       .maybeSingle();
 
     if (!data) return res.status(404).json({ error: "Identifiant introuvable." });
