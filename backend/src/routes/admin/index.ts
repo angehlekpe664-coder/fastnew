@@ -80,7 +80,7 @@ adminRouter.get("/stats", async (_req, res, next) => {
       } else if (m.includes("code tp") || m.includes("filière")) {
         motifCategory = "Code TP / Filière incorrect";
       } else if (m.includes("déjà") || m.includes("enregistrée")) {
-        motifCategory = "Quittance déjà utilisée";
+        motifCategory = "Votre inscription a déjà été prise en compte.";
       } else if (m.includes("montant")) {
         motifCategory = "Erreur de montant";
       } else if (m.includes("qr")) {
