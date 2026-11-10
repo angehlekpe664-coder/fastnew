@@ -243,7 +243,7 @@ const EDITING_TOOLS_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "Iceni PDF Editor", regex: /iceni/i },
   { name: "PDFedit", regex: /pdfedit|pdfmod|pdfsam|pdfill|easeus\s*pdf/i },
   { name: "Microsoft Word (Édité/Converti)", regex: /microsoft\s*word|ms\s*word/i },
-  { name: "LibreOffice Draw", regex: /libreoffice\s*draw|openoffice\s*draw/i },
+  { name: "LibreOffice / OpenOffice Draw", regex: /libreoffice|openoffice|\bdraw\b/i },
 ];
 
 export function extractDocumentMetadata(
@@ -312,6 +312,7 @@ export function inspectPdfForensics(buffer: Buffer): PdfForensicReport {
     { name: "Iceni Editor Tag (IceniOID/IceniObject)", regex: /Iceni(?:OID|Object|CID)/i },
     { name: "Iceni Layout Tag (Galley/Para)", regex: /\b(?:Galley|Para)\b/i },
     { name: "Police modifiée ICUID", regex: /\/ICUID\s*/i },
+    { name: "Éditeur LibreOffice Draw / OpenOffice", regex: /libreoffice|openoffice|\bdraw\b/i },
     { name: "Tag iLovePDF", regex: /ilovepdf/i },
     { name: "Tag PDF24", regex: /pdf24/i },
     { name: "Tag Sejda", regex: /sejda/i },

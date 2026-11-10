@@ -5,7 +5,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader, Skeleton } from "@/components/ui/admin-ui";
-import { BookOpen, Plus, Power, PowerOff } from "lucide-react";
+import { BookOpen, Plus, Power, PowerOff, Filter, Search } from "lucide-react";
 import { loadDraft, saveDraft, clearDraft } from "@/lib/draft";
 
 type TpRow = {
@@ -27,6 +27,8 @@ export default function TpCatalogPage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
+  const [selectedFiliere, setSelectedFiliere] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,11 +58,29 @@ export default function TpCatalogPage() {
     return () => document.removeEventListener("visibilitychange", reload);
   }, [load]);
 
+  const filieres = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.filiere.toUpperCase()))).sort(),
+    [rows]
+  );
+
   const filtered = useMemo(() => {
-    if (filter === "active") return rows.filter((r) => r.actif);
-    if (filter === "inactive") return rows.filter((r) => !r.actif);
-    return rows;
-  }, [rows, filter]);
+    let list = rows;
+    if (filter === "active") list = list.filter((r) => r.actif);
+    if (filter === "inactive") list = list.filter((r) => !r.actif);
+    if (selectedFiliere) {
+      list = list.filter((r) => r.filiere.toUpperCase() === selectedFiliere.toUpperCase());
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.code.toLowerCase().includes(q) ||
+          r.title.toLowerCase().includes(q) ||
+          r.filiere.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [rows, filter, selectedFiliere, searchQuery]);
 
   const activeCount = rows.filter((r) => r.actif).length;
 
@@ -146,6 +166,7 @@ export default function TpCatalogPage() {
         description={`${activeCount} TP actif(s) sur ${rows.length} répertorié(s)`}
       />
 
+      {/* Formulaire d'ajout d'un nouveau Code TP */}
       <Card className="glass-panel border-amber-500/20 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
@@ -203,27 +224,89 @@ export default function TpCatalogPage() {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
-        {(["all", "active", "inactive"] as const).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
-              filter === f
-                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40"
-                : "bg-card border border-border text-muted hover:text-foreground"
-            }`}
-          >
-            {f === "all" ? "Tous les TP" : f === "active" ? "Seulement Actifs" : "Inactifs"}
-          </button>
-        ))}
+      {/* Barre de filtrage avancée par Filière & Statut */}
+      <div className="glass-panel rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+            <Filter className="h-4 w-4" /> FILTRER LE CATALOGUE :
+          </div>
+
+          {/* Filtre par Statut */}
+          <div className="flex items-center gap-1.5">
+            {(["all", "active", "inactive"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                  filter === f
+                    ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40"
+                    : "bg-card border border-border text-muted hover:text-foreground"
+                }`}
+              >
+                {f === "all" ? "Tous" : f === "active" ? "Actifs" : "Inactifs"}
+              </button>
+            ))}
+          </div>
+
+          {/* Filtre par Filière */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">Filière :</span>
+            <select
+              value={selectedFiliere}
+              onChange={(e) => setSelectedFiliere(e.target.value)}
+              className="h-9 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground outline-none focus:border-amber-500 shadow-xs"
+            >
+              <option value="">Toutes filières ({rows.length})</option>
+              {filieres.map((f) => {
+                const count = rows.filter((r) => r.filiere.toUpperCase() === f).length;
+                return (
+                  <option key={f} value={f}>
+                    Filière {f} ({count} TP)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {(selectedFiliere || searchQuery || filter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFilter("all");
+                setSelectedFiliere("");
+                setSearchQuery("");
+              }}
+              className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400"
+            >
+              Réinitialiser
+            </Button>
+          )}
+
+          {/* Champ de recherche rapide par code / titre */}
+          <div className="relative ml-auto min-w-[220px] flex-1 sm:flex-initial">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input
+              className="bg-card pl-9 shadow-xs"
+              placeholder="Rechercher code TP ou titre..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
+      {/* Liste des TP filtrés */}
       <Card className="glass-panel border-border shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
-            <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Catalogue des TP ({filtered.length})
+          <CardTitle className="flex items-center justify-between text-base font-bold text-foreground">
+            <span className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" /> Catalogue des TP
+            </span>
+            <Badge variant="secondary" className="font-mono text-xs">
+              {filtered.length} TP affiché(s)
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2.5">
@@ -232,7 +315,7 @@ export default function TpCatalogPage() {
               <Skeleton key={i} className="h-16" />
             ))}
           {!loading && filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted">Aucun TP dans cette catégorie.</p>
+            <p className="py-8 text-center text-sm text-muted">Aucun TP ne correspond à ces filtres.</p>
           )}
           {!loading &&
             filtered.map((row) => (
@@ -245,7 +328,7 @@ export default function TpCatalogPage() {
                 </div>
                 <div className="min-w-[140px] flex-1">
                   <div className="font-bold text-foreground text-sm">{row.title}</div>
-                  <div className="text-xs font-medium text-muted">Filière {row.filiere}</div>
+                  <div className="text-xs font-semibold text-muted">Filière {row.filiere}</div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted font-medium">Prix :</span>

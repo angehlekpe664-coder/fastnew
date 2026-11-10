@@ -1,61 +1,88 @@
 import fs from "fs/promises";
-import path from "path";
 import { parseReceiptBuffer } from "../services/receipt-parser.service.js";
 import { analyzeDocumentIntegrity } from "../services/document-integrity.service.js";
 
 async function runFalsificationTest() {
   console.log("=== Test de détection automatique des quittances falsifiées ===");
 
-  const realPath = "/home/branel/Téléchargements/varwwwhtmlwp-contentthemesmaterialfichiersquittances14667150-a5-l.pdf";
-  const fakePath = "/home/branel/Téléchargements/varwwwhtmlwp-contentthemesmaterialfichiersquittances14667150-a5-l (1).pdf";
+  const set1Real = "/home/branel/Téléchargements/varwwwhtmlwp-contentthemesmaterialfichiersquittances14667150-a5-l.pdf";
+  const set1Fake = "/home/branel/Téléchargements/varwwwhtmlwp-contentthemesmaterialfichiersquittances14667150-a5-l (1).pdf";
 
-  let hasRealFile = false;
+  const set2Real = "/home/branel/Téléchargements/testes/3/varwwwhtmlwp-contentthemesmaterialfichiersquittances14732696-a5-l.pdf";
+  const set2Fake = "/home/branel/Téléchargements/testes/3/varwwwhtmlwp-contentthemesmaterialfichiersquittances14836513-a5______.pdf";
+
+  // --- SERIE 1 ---
   try {
-    await fs.access(realPath);
-    hasRealFile = true;
-  } catch {
-    console.log("Fichiers de test locaux non trouvés dans ~/Téléchargements, test ignoré.");
-    return;
+    await fs.access(set1Real);
+    console.log("\n--- SÉRIE 1 (ICUID / Sliced text) ---");
+    const bufReal1 = await fs.readFile(set1Real);
+    const parsedReal1 = await parseReceiptBuffer(bufReal1, "application/pdf");
+    const reportReal1 = analyzeDocumentIntegrity(parsedReal1.rawText, {
+      expectedTp: "INF1421",
+      metadataInfo: parsedReal1.metadataInfo,
+      securityAnalysis: parsedReal1.securityAnalysis,
+      mimeType: "application/pdf",
+    });
+    console.log("Série 1 - Vraie Quittance Passed:", reportReal1.passed);
+    if (!reportReal1.passed) throw new Error(`Vraie quittance série 1 rejetée: ${reportReal1.blockingMotif}`);
+
+    const bufFake1 = await fs.readFile(set1Fake);
+    const parsedFake1 = await parseReceiptBuffer(bufFake1, "application/pdf");
+    const reportFake1 = analyzeDocumentIntegrity(parsedFake1.rawText, {
+      expectedTp: "INF1422",
+      metadataInfo: parsedFake1.metadataInfo,
+      securityAnalysis: parsedFake1.securityAnalysis,
+      mimeType: "application/pdf",
+    });
+    console.log("Série 1 - Fausse Quittance Passed:", reportFake1.passed);
+    console.log("Série 1 - Motif refus:", reportFake1.blockingMotif);
+    if (reportFake1.passed) throw new Error("Fausse quittance série 1 acceptée par erreur !");
+  } catch (err: any) {
+    if (err.code === "ENOENT") {
+      console.log("Fichiers série 1 non trouvés, étape ignorée.");
+    } else {
+      throw err;
+    }
   }
 
-  if (!hasRealFile) return;
+  // --- SERIE 2 (LibreOffice Draw / Retouche) ---
+  try {
+    await fs.access(set2Real);
+    console.log("\n--- SÉRIE 2 (LibreOffice Draw Export) ---");
+    const bufReal2 = await fs.readFile(set2Real);
+    const parsedReal2 = await parseReceiptBuffer(bufReal2, "application/pdf");
+    const reportReal2 = analyzeDocumentIntegrity(parsedReal2.rawText, {
+      expectedTp: "INF1421",
+      metadataInfo: parsedReal2.metadataInfo,
+      securityAnalysis: parsedReal2.securityAnalysis,
+      mimeType: "application/pdf",
+    });
+    console.log("Série 2 - Vraie Quittance (14732696) Passed:", reportReal2.passed);
+    if (!reportReal2.passed) throw new Error(`Vraie quittance série 2 rejetée: ${reportReal2.blockingMotif}`);
 
-  // 1. Test Quittance Authentique (INF1421)
-  const realBuffer = await fs.readFile(realPath);
-  const realParsed = await parseReceiptBuffer(realBuffer, "application/pdf");
-  const realIntegrity = analyzeDocumentIntegrity(realParsed.rawText, {
-    expectedTp: "INF1421",
-    metadataInfo: realParsed.metadataInfo,
-    securityAnalysis: realParsed.securityAnalysis,
-    mimeType: "application/pdf",
-  });
-
-  console.log("Test Quittance Réelle - Integrity Passed:", realIntegrity.passed);
-  if (!realIntegrity.passed) {
-    throw new Error(`La vraie quittance a été rejetée à tort : ${realIntegrity.blockingMotif}`);
+    const bufFake2 = await fs.readFile(set2Fake);
+    const parsedFake2 = await parseReceiptBuffer(bufFake2, "application/pdf");
+    const reportFake2 = analyzeDocumentIntegrity(parsedFake2.rawText, {
+      expectedTp: "CHM1226-1",
+      metadataInfo: parsedFake2.metadataInfo,
+      securityAnalysis: parsedFake2.securityAnalysis,
+      mimeType: "application/pdf",
+    });
+    console.log("Série 2 - Fausse Quittance (14836513) Passed:", reportFake2.passed);
+    console.log("Série 2 - Motif refus:", reportFake2.blockingMotif);
+    if (reportFake2.passed) throw new Error("Fausse quittance série 2 acceptée par erreur !");
+  } catch (err: any) {
+    if (err.code === "ENOENT") {
+      console.log("Fichiers série 2 non trouvés, étape ignorée.");
+    } else {
+      throw err;
+    }
   }
 
-  // 2. Test Quittance Falsifiée (INF1422 - Fausse)
-  const fakeBuffer = await fs.readFile(fakePath);
-  const fakeParsed = await parseReceiptBuffer(fakeBuffer, "application/pdf");
-  const fakeIntegrity = analyzeDocumentIntegrity(fakeParsed.rawText, {
-    expectedTp: "INF1422",
-    metadataInfo: fakeParsed.metadataInfo,
-    securityAnalysis: fakeParsed.securityAnalysis,
-    mimeType: "application/pdf",
-  });
-
-  console.log("Test Quittance Falsifiée - Integrity Passed:", fakeIntegrity.passed);
-  console.log("Test Quittance Falsifiée - Motif de refus:", fakeIntegrity.blockingMotif);
-
-  if (fakeIntegrity.passed) {
-    throw new Error("La quittance falsifiée a été acceptée par erreur !");
-  }
-
-  console.log("\n✅ TEST DE DÉTECTION DE FALSIFICATION RÉUSSI AVEC SUCCÈS !");
+  console.log("\n✅ TOUS LES TESTS DE DÉTECTION FORENSIQUE SONT PASSÉS AVEC SUCCÈS !");
 }
 
 runFalsificationTest().catch((err) => {
-  console.error("❌ ECHEC DU TEST FORENSIQUE :", err);
+  console.error("❌ ÉCHEC DU TEST FORENSIQUE :", err);
   process.exit(1);
 });
