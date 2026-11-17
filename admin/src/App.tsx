@@ -5,6 +5,7 @@ import LoginPage from "@/pages/LoginPage";
 import { Skeleton } from "@/components/ui/admin-ui";
 
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
+const OfficialStudentsPage = lazy(() => import("@/pages/OfficialStudentsPage"));
 const StudentsPage = lazy(() => import("@/pages/StudentsPage"));
 const FailuresPage = lazy(() => import("@/pages/FailuresPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
@@ -42,6 +43,14 @@ export default function App() {
             element={
               <Suspense fallback={<PageLoader />}>
                 <DashboardPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/official-students"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <OfficialStudentsPage />
               </Suspense>
             }
           />

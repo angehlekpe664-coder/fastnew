@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { getSupabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
 import { getValidationRules, verifyReceipt, uploadQuittance } from "../services/verification.service.js";
 import { lookupTp, listActiveTp } from "../data/tp-catalog.js";
+import { lookupOfficialStudent, isOfficialRosterActive } from "../services/official-students.service.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -153,6 +154,30 @@ verifyRouter.post(
         logger.warn(`Fichier non-PDF déguisé reçu pour ${matricule}`);
         return res.status(400).json({
           error: "Le fichier soumis n'est pas un document PDF valide (en-tête binaire non conforme).",
+        });
+      }
+
+      // Option A (Strict) : L'étudiant doit obligatoirement figurer dans la base officielle importée
+      const officialStudent = await lookupOfficialStudent(matricule);
+      const isRosterActive = await isOfficialRosterActive();
+
+      if (isRosterActive && !officialStudent) {
+        logger.warn(`Étudiant ${matricule} non trouvé dans la base officielle des étudiants.`);
+        persistFailureAsync({
+          nom,
+          prenom,
+          matricule,
+          filiere,
+          codeTp,
+          motif: `Matricule « ${matricule} » non répertorié dans la base officielle des étudiants autorisés.`,
+          buffer: req.file.buffer,
+          filename: req.file.originalname,
+          mimeType: req.file.mimetype,
+          metadata: null,
+        });
+        return res.status(403).json({
+          success: false,
+          motif: `Accès refusé : Le matricule « ${matricule} » n'est pas répertorié dans la base officielle des étudiants. Veuillez contacter l'administration.`,
         });
       }
 

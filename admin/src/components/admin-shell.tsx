@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { clearTokenCache, syncTokenFromSession, warmupAuth } from "@/lib/api";
 import { saveReturnPath } from "@/lib/draft";
-import { Shield, LogOut, LayoutDashboard, Users, AlertTriangle, Settings, BookOpen, Sun, Moon } from "lucide-react";
+import { Shield, LogOut, LayoutDashboard, Users, AlertTriangle, Settings, BookOpen, Sun, Moon, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +90,7 @@ export function AdminShell() {
 
   const links = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard", color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10" },
+    { to: "/official-students", icon: UserCheck, label: "Base Étudiants", color: "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10" },
     { to: "/students", icon: Users, label: "Validés", color: "text-sky-600 dark:text-sky-400 bg-sky-500/10" },
     { to: "/failures", icon: AlertTriangle, label: "Échecs", color: "text-rose-600 dark:text-rose-400 bg-rose-500/10" },
     { to: "/tp-catalog", icon: BookOpen, label: "Codes TP", color: "text-amber-600 dark:text-amber-400 bg-amber-500/10" },

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { getSupabaseAdmin, isSupabaseConfigured } from "../../lib/supabase.js";
 import { requireSupabaseAdmin } from "../../middleware/supabase-auth.js";
 import { invalidateTpCache } from "../../data/tp-catalog.js";
@@ -8,6 +9,10 @@ import {
   exportStudentsToExcel,
   exportStudentsToPdf,
 } from "../../services/export.service.js";
+import {
+  importOfficialStudents,
+  generateReconciledTpExcel,
+} from "../../services/official-students.service.js";
 import { logger } from "../../logger.js";
 
 type StudentRow = {
@@ -24,6 +29,11 @@ type StudentRow = {
   date_verification: string;
   statut: string;
 };
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 
 export const adminRouter = Router();
 
@@ -46,11 +56,12 @@ adminRouter.get("/me", async (req, res, next) => {
 adminRouter.get("/stats", async (_req, res, next) => {
   try {
     const sb = getSupabaseAdmin();
-    const [{ count: validated }, { count: failed }, { data: rows }, { data: failRows }] = await Promise.all([
+    const [{ count: validated }, { count: failed }, { data: rows }, { data: failRows }, { count: officialCount }] = await Promise.all([
       sb.from("validated_students").select("*", { count: "exact", head: true }),
       sb.from("failed_verifications").select("*", { count: "exact", head: true }),
       sb.from("validated_students").select("filiere, code_tp, tp_title"),
       sb.from("failed_verifications").select("motif, filiere, code_tp"),
+      sb.from("official_students").select("*", { count: "exact", head: true }),
     ]);
 
     const v = validated ?? 0;
@@ -80,11 +91,13 @@ adminRouter.get("/stats", async (_req, res, next) => {
       } else if (m.includes("code tp") || m.includes("filière")) {
         motifCategory = "Code TP / Filière incorrect";
       } else if (m.includes("déjà") || m.includes("enregistrée")) {
-        motifCategory = "Votre inscription a déjà été prise en compte.";
+        motifCategory = "Quittance déjà utilisée";
       } else if (m.includes("montant")) {
         motifCategory = "Erreur de montant";
       } else if (m.includes("qr")) {
         motifCategory = "QR Code non valide";
+      } else if (m.includes("officielle")) {
+        motifCategory = "Étudiant non inscrit en base officielle";
       }
       failureMotifs[motifCategory] = (failureMotifs[motifCategory] ?? 0) + 1;
     }
@@ -93,6 +106,7 @@ adminRouter.get("/stats", async (_req, res, next) => {
       validated: v,
       failed: f,
       total,
+      officialRosterCount: officialCount ?? 0,
       validationRate: total > 0 ? Math.round((v / total) * 100) : 0,
       byFiliere: Object.entries(byFiliere).map(([filiere, count]) => ({ filiere, count })),
       byTp: Object.values(byTp).sort((a, b) => b.count - a.count),
@@ -103,18 +117,110 @@ adminRouter.get("/stats", async (_req, res, next) => {
   }
 });
 
+/** Importation de la base officielle d'étudiants autorisés (Excel) */
+adminRouter.post(
+  "/official-students/import",
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "Veuillez téléverser un fichier Excel (.xlsx)." });
+      }
+
+      const mode = (req.body?.mode === "replace" ? "replace" : "merge") as "replace" | "merge";
+      const result = await importOfficialStudents(req.file.buffer, mode);
+
+      logger.info(`Base officielle d'étudiants importée par l'admin (${result.count} étudiants, mode=${result.mode})`);
+      return res.json({
+        success: true,
+        count: result.count,
+        mode: result.mode,
+        message: `${result.count} étudiant(s) répertorié(s) avec succès dans la base officielle.`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/** Consultation de la base officielle des étudiants */
+adminRouter.get("/official-students", async (req, res, next) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const filiere = String(req.query.filiere ?? "").trim().toUpperCase();
+
+    let query = getSupabaseAdmin()
+      .from("official_students")
+      .select("*")
+      .order("matricule", { ascending: true });
+
+    if (filiere) query = query.eq("filiere", filiere);
+    if (q) {
+      query = query.or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,matricule.ilike.%${q}%,filiere.ilike.%${q}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data ?? []);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Suppression d'un étudiant de la base officielle */
+adminRouter.delete("/official-students/:matricule", async (req, res, next) => {
+  try {
+    const matricule = decodeURIComponent(req.params.matricule).trim().toUpperCase();
+    const { error } = await getSupabaseAdmin()
+      .from("official_students")
+      .delete()
+      .eq("matricule", matricule);
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true, message: `Matricule ${matricule} retiré de la base officielle.` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Réconciliation & Génération du PV de Présence TP Excel avec onglets par filière */
+adminRouter.post(
+  "/reconcile-excel",
+  upload.single("file"),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "Veuillez téléverser le fichier Excel des étudiants." });
+      }
+
+      const reconciledBuffer = await generateReconciledTpExcel(req.file.buffer);
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="PV-Presence-TP-Reconcilie-${Date.now()}.xlsx"`
+      );
+      return res.send(reconciledBuffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 /** Liste des filières enregistrées */
 adminRouter.get("/filieres", async (_req, res, next) => {
   try {
     const sb = getSupabaseAdmin();
-    const [{ data: catalog }, { data: students }] = await Promise.all([
+    const [{ data: catalog }, { data: students }, { data: official }] = await Promise.all([
       sb.from("tp_catalog").select("filiere"),
       sb.from("validated_students").select("filiere"),
+      sb.from("official_students").select("filiere"),
     ]);
 
     const set = new Set<string>();
     for (const item of catalog ?? []) if (item.filiere) set.add(item.filiere.toUpperCase());
     for (const item of students ?? []) if (item.filiere) set.add(item.filiere.toUpperCase());
+    for (const item of official ?? []) if (item.filiere) set.add(item.filiere.toUpperCase());
 
     return res.json(Array.from(set).sort());
   } catch (error) {
