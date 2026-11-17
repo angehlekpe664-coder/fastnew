@@ -15,7 +15,7 @@
 ### Backend (`backend/.env`)
 
 ```env
-SUPABASE_URL=https://sxpowjlpeldffyyyowie.supabase.co
+SUPABASE_URL=https://votre-projet.supabase.co
 SUPABASE_ANON_KEY=sb_publishable_...
 SUPABASE_SERVICE_ROLE_KEY=sb_secret_...   ← À COMPLÉTER
 PORT=4000
@@ -28,7 +28,7 @@ Récupérer la clé secrète : **Dashboard → Settings → API → Secret key**
 ### Admin (`admin/.env`)
 
 ```env
-VITE_SUPABASE_URL=https://sxpowjlpeldffyyyowie.supabase.co
+VITE_SUPABASE_URL=https://votre-projet.supabase.co
 VITE_SUPABASE_ANON_KEY=sb_publishable_...
 VITE_API_URL=
 ```
@@ -48,6 +48,7 @@ Dans **SQL Editor**, exécuter dans l'ordre :
 1. `supabase/migrations/001_initial.sql` — tables, RLS, catalogue TP
 2. `supabase/migrations/002_storage_bucket.sql` — bucket privé `quittances`
 3. `supabase/migrations/003_phy1322_only.sql` — activer uniquement PHY1322 + règles Trésor
+4. `supabase/migrations/005_official_students.sql` — table `official_students` pour la base officielle d'étudiants
 
 Vérification rapide : `GET /rest/v1/tp_catalog?select=code&limit=1` doit renvoyer des codes TP.
 
@@ -67,8 +68,6 @@ ON CONFLICT (id) DO NOTHING;
 
 - **Ne jamais** mettre `SUPABASE_SERVICE_ROLE_KEY` dans le frontend ni l'app admin
 - Les fichiers `.env` sont dans `.gitignore` — ne pas les commiter
-- Si `backend/.env` a déjà été poussé sur Git : retirer du suivi (`git rm --cached backend/.env`) et **rotater** la clé secrète dans le Dashboard
-- Rotation recommandée si une clé a été partagée en clair (chat, issue, etc.)
 
 ## 5. Test
 
@@ -84,9 +83,3 @@ cd admin && npm run dev   # http://localhost:5174
 # Frontend public
 cd frontend && npm run dev   # http://localhost:5173
 ```
-
-## 6. Auth
-
-- **Étudiants** : aucun compte Supabase, formulaire public → API backend
-- **Admins** : Supabase Auth via l'app admin séparée (port 5174)
-- Le backend vérifie le JWT + la table `admin_profiles` sur chaque route `/api/admin/*`
