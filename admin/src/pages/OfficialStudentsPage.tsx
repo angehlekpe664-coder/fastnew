@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageHeader, Skeleton } from "@/components/ui/admin-ui";
+import { PageHeader } from "@/components/ui/admin-ui";
 import {
   Upload,
   UserCheck,
