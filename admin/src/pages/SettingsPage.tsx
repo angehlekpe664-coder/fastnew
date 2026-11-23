@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/admin-ui";
-import { Save, ShieldCheck, Sliders, CheckCircle2 } from "lucide-react";
+import { Save, ShieldCheck, Sliders, CheckCircle2, Calendar } from "lucide-react";
 
 type Rules = {
   expectedAmount: number;
@@ -12,6 +12,9 @@ type Rules = {
   paymentTitle: string;
   allowedDateFrom: string | null;
   allowedDateTo: string | null;
+  validFromMonth?: number | null;
+  validFromYear?: number | null;
+  rejectObsoleteReceipts?: boolean;
   treasuryDomain: string;
   requireQrCode: boolean;
   requireOfficialLogo: boolean;
@@ -22,6 +25,21 @@ type Rules = {
   requirePkiCheck?: boolean;
   requireVectorStructure?: boolean;
 };
+
+const MONTHS = [
+  { val: 1, label: "01 — Janvier" },
+  { val: 2, label: "02 — Février" },
+  { val: 3, label: "03 — Mars" },
+  { val: 4, label: "04 — Avril" },
+  { val: 5, label: "05 — Mai" },
+  { val: 6, label: "06 — Juin" },
+  { val: 7, label: "07 — Juillet" },
+  { val: 8, label: "08 — Août" },
+  { val: 9, label: "09 — Septembre" },
+  { val: 10, label: "10 — Octobre" },
+  { val: 11, label: "11 — Novembre" },
+  { val: 12, label: "12 — Décembre" },
+];
 
 export default function SettingsPage() {
   const [rules, setRules] = useState<Rules | null>(null);
@@ -36,7 +54,7 @@ export default function SettingsPage() {
     if (!rules) return;
     setSaving(true);
     await adminFetch("/api/admin/settings", { method: "PUT", body: JSON.stringify(rules) });
-    setMsg("Paramètres enregistrés avec succès.");
+    setMsg("Paramètres de validation enregistrés avec succès.");
     setSaving(false);
   };
 
@@ -54,14 +72,14 @@ export default function SettingsPage() {
     <div className="animate-fade-in space-y-5">
       <PageHeader
         title="Paramètres de validation"
-        description="Configuration du pipeline de sécurité et des contrôles automatiques"
+        description="Configuration du pipeline de sécurité, de la période de validité et des contrôles automatiques"
       />
 
       <Card className="glass-panel max-w-2xl border-purple-500/20 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
             <Sliders className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            Paramètres généraux
+            Paramètres généraux & Tarification
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -77,6 +95,48 @@ export default function SettingsPage() {
           <Field label="Domaine QR Trésor autorisé">
             <Input className="bg-card font-mono text-xs" value={rules.treasuryDomain} onChange={(e) => u("treasuryDomain", e.target.value)} />
           </Field>
+
+          {/* BLOC NOUVELLE FONCTIONNALITÉ : Date de début de validité & Anti-obsolescence */}
+          <div className="md:col-span-2 space-y-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 shadow-xs">
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              <Calendar className="h-4 w-4" /> Période de début de validité des quittances (Anti-Obsolescence)
+            </p>
+            <p className="text-xs text-muted leading-relaxed">
+              Toute quittance payée <strong>avant le mois et l'année définis ci-dessous</strong> sera automatiquement refusée et considérée comme obsolète.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Mois de début exigé">
+                <Select
+                  className="bg-card font-bold text-xs"
+                  value={rules.validFromMonth ?? 9}
+                  onChange={(e) => u("validFromMonth", +e.target.value)}
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m.val} value={m.val}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Année de début exigée">
+                <Input
+                  type="number"
+                  min={2020}
+                  max={2030}
+                  className="bg-card font-bold text-xs"
+                  value={rules.validFromYear ?? 2025}
+                  onChange={(e) => u("validFromYear", +e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="pt-1">
+              <Check
+                label="Refuser automatiquement les quittances antérieures au mois de début (Activer l'anti-obsolescence)"
+                checked={rules.rejectObsoleteReceipts ?? true}
+                onChange={(v) => u("rejectObsoleteReceipts", v)}
+              />
+            </div>
+          </div>
 
           <div className="md:col-span-2 space-y-3 rounded-2xl border border-border bg-card/60 p-4 shadow-xs">
             <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">

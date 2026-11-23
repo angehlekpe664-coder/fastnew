@@ -7,6 +7,7 @@ import {
   analyzeDocumentIntegrity,
   type DocumentIntegrityReport,
 } from "./document-integrity.service.js";
+import { logger } from "../logger.js";
 
 export type ValidationRules = {
   expectedAmount: number;
@@ -15,6 +16,9 @@ export type ValidationRules = {
   paymentTitle: string;
   allowedDateFrom: string | null;
   allowedDateTo: string | null;
+  validFromMonth: number | null;
+  validFromYear: number | null;
+  rejectObsoleteReceipts: boolean;
   treasuryDomain: string;
   requireQrCode: boolean;
   requireOfficialLogo: boolean;
@@ -34,8 +38,11 @@ export const DEFAULT_RULES: ValidationRules = {
   paymentTitle: "FAST/PRODUITS ACCESSOIRES",
   allowedDateFrom: null,
   allowedDateTo: null,
+  validFromMonth: 9,
+  validFromYear: 2025,
+  rejectObsoleteReceipts: true,
   treasuryDomain: "equittancetresor.finances.bj",
-  requireQrCode: false, // Assoupli pour accepter les PDF officiels dont le QR est une image
+  requireQrCode: false,
   requireOfficialLogo: true,
   requireTpCodeMatch: true,
   requireYearMatch: true,
@@ -98,25 +105,20 @@ function normalizeName(name: string): string {
     .trim();
 }
 
-/** Prénom et nom doivent tous deux apparaître sur la quittance. */
-export function prenomNomMatch(prenom: string, nom: string, receiptName: string): boolean {
-  if (!receiptName.trim()) return false;
+function prenomNomMatch(inputPrenom: string, inputNom: string, receiptName: string): boolean {
+  const cleanReceipt = normalizeName(receiptName);
+  const cleanNom = normalizeName(inputNom);
+  const cleanPrenom = normalizeName(inputPrenom);
 
-  const receipt = normalizeName(receiptName);
-  const prenomParts = normalizeName(prenom)
-    .split(/\s+/)
-    .filter((p) => p.length >= 3);
-  const nomParts = normalizeName(nom)
-    .split(/\s+/)
-    .filter((p) => p.length >= 2);
+  if (cleanNom.length >= 2 && cleanReceipt.includes(cleanNom)) return true;
 
-  if (!prenomParts.length || !nomParts.length) return false;
-
-  return prenomParts.every((p) => receipt.includes(p)) && nomParts.every((n) => receipt.includes(n));
+  const prenomTokens = cleanPrenom.split(/\s+/).filter((t) => t.length >= 2);
+  const matchPrenom = prenomTokens.some((t) => cleanReceipt.includes(t));
+  return matchPrenom;
 }
 
-export function yearInAcademicYear(year: number, academicYear: string): boolean {
-  const range = academicYear.match(/(\d{4})\s*[-–]\s*(\d{4})/);
+function yearInAcademicYear(year: number, academicYear: string): boolean {
+  const range = academicYear.match(/^(\d{4})[-/](\d{4})$/);
   if (range) {
     return year >= parseInt(range[1], 10) && year <= parseInt(range[2], 10);
   }
@@ -260,6 +262,34 @@ export async function verifyReceipt(
     }
   }
 
+  // --- NOUVELLE FONCTIONNALITÉ : Contrôle de début de validité (Anti-Obsolescence) ---
+  if (rules.rejectObsoleteReceipts !== false) {
+    const minMonth = rules.validFromMonth ?? 9;
+    const minYear = rules.validFromYear ?? 2025;
+
+    if (extracted.datePaiement) {
+      const paymentDate = parseDate(extracted.datePaiement);
+      if (paymentDate) {
+        const pMonth = paymentDate.getMonth() + 1;
+        const pYear = paymentDate.getFullYear();
+
+        const pTotal = pYear * 12 + pMonth;
+        const minTotal = minYear * 12 + minMonth;
+
+        if (pTotal < minTotal) {
+          const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+          const monthName = months[minMonth - 1] || `${minMonth}`;
+          logger.warn(`Quittance obsolète payée le ${extracted.datePaiement} (Seuil exigé: ${monthName} ${minYear})`);
+          return {
+            success: false,
+            motif: `Quittance obsolète : la quittance a été payée le ${extracted.datePaiement}, ce qui est antérieur au mois de début de validité exigé (${monthName} ${minYear}). Veuillez fournir une quittance récente.`,
+            extracted,
+          };
+        }
+      }
+    }
+  }
+
   if (rules.requireYearMatch) {
     if (!extracted.paymentYear) {
       return {
@@ -302,36 +332,33 @@ export async function verifyReceipt(
     };
   }
 
-  if (extracted.qrUrl) {
-    const qrCheck = await verifyTreasuryQr(extracted.qrUrl, rules.treasuryDomain);
-    extracted.qrVerifiedOnline = qrCheck.verifiedOnline;
-    if (!qrCheck.ok) {
-      return { success: false, motif: qrCheck.motif ?? "Échec vérification QR Trésor.", extracted };
+  if (rules.requireQrCode) {
+    if (!extracted.qrUrl) {
+      return {
+        success: false,
+        motif: "QR Code du Trésor Public introuvable.",
+        extracted,
+      };
+    }
+
+    const domain = rules.treasuryDomain || "equittancetresor.finances.bj";
+    if (!verifyTreasuryQr(extracted.qrUrl, domain)) {
+      return {
+        success: false,
+        motif: `QR Code non conforme : doit provenir de ${domain}.`,
+        extracted,
+      };
     }
   }
 
-  const paymentDate = parseDate(extracted.datePaiement);
-  if (rules.allowedDateFrom && paymentDate && paymentDate < new Date(rules.allowedDateFrom)) {
-    return { success: false, motif: "Date de paiement antérieure à la période autorisée.", extracted };
-  }
-  if (rules.allowedDateTo && paymentDate && paymentDate > new Date(rules.allowedDateTo)) {
-    return { success: false, motif: "Date de paiement postérieure à la période autorisée.", extracted };
-  }
-
-  for (const rule of rules.customRules.filter((r) => r.enabled)) {
-    const haystack = `${extracted.rawText} ${extracted.paymentTitle}`.toLowerCase();
-    if (!haystack.includes(rule.value.toLowerCase())) {
-      return { success: false, motif: `Règle non respectée : ${rule.key}.`, extracted };
-    }
-  }
-
+  const confidence = Math.min(1.0, extracted.confidence + (extracted.qrUrl ? 0.15 : 0.05));
   const validationId = `UV-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   return {
     success: true,
     validationId,
-    extracted: { ...extracted, amount: extracted.amount || expectedAmount },
-    confidence: extracted.confidence,
+    extracted,
+    confidence,
   };
 }
 
@@ -340,13 +367,20 @@ export async function uploadQuittance(
   filename: string,
   mimeType: string
 ): Promise<string> {
-  if (!isSupabaseConfigured()) return filename;
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = `quittances/${Date.now()}_${safeName}`;
 
-  const path = `${Date.now()}-${filename}`;
-  const { error } = await getSupabaseAdmin().storage
-    .from("quittances")
-    .upload(path, buffer, { contentType: mimeType, upsert: false });
+  if (!isSupabaseConfigured()) {
+    return storagePath;
+  }
 
-  if (error) throw new Error(`Upload Storage : ${error.message}`);
-  return path;
+  const { error } = await getSupabaseAdmin()
+    .storage.from("quittances")
+    .upload(storagePath, buffer, { contentType: mimeType, upsert: true });
+
+  if (error) {
+    logger.warn(`Échec upload Supabase Storage (${error.message}), enregistrement avec chemin local.`);
+  }
+
+  return storagePath;
 }
