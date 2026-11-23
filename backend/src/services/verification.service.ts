@@ -38,11 +38,11 @@ export const DEFAULT_RULES: ValidationRules = {
   paymentTitle: "FAST/PRODUITS ACCESSOIRES",
   allowedDateFrom: null,
   allowedDateTo: null,
-  validFromMonth: 9,
-  validFromYear: 2025,
+  validFromMonth: 10, // Octobre
+  validFromYear: 2025, // 2025
   rejectObsoleteReceipts: true,
   treasuryDomain: "equittancetresor.finances.bj",
-  requireQrCode: false,
+  requireQrCode: false, // Désactivé : détection forensique vectorielle & logicielle prioritaire
   requireOfficialLogo: true,
   requireTpCodeMatch: true,
   requireYearMatch: true,
@@ -205,6 +205,7 @@ export async function verifyReceipt(
     };
   }
 
+  // 1. Contrôle forensique & intégrité de la structure vectorielle du PDF et absence d'outils de retouche
   const integrityResult = applyIntegrityChecks(extracted, input.codeTp, input.mimeType, rules);
   if (!integrityResult.ok) {
     return {
@@ -262,30 +263,23 @@ export async function verifyReceipt(
     }
   }
 
-  // --- NOUVELLE FONCTIONNALITÉ : Contrôle de début de validité (Anti-Obsolescence) ---
-  if (rules.rejectObsoleteReceipts !== false) {
-    const minMonth = rules.validFromMonth ?? 9;
-    const minYear = rules.validFromYear ?? 2025;
+  // 2. Contrôle de date Anti-Obsolescence : Paiement au minimum en Octobre de l'année de début de l'année académique (XXXX-XXXX)
+  if (extracted.datePaiement) {
+    const paymentDate = parseDate(extracted.datePaiement);
+    if (paymentDate) {
+      const acadMatch = (rules.academicYear || "2025-2026").match(/^(\d{4})/);
+      const startYear = acadMatch ? parseInt(acadMatch[1], 10) : (rules.validFromYear ?? 2025);
 
-    if (extracted.datePaiement) {
-      const paymentDate = parseDate(extracted.datePaiement);
-      if (paymentDate) {
-        const pMonth = paymentDate.getMonth() + 1;
-        const pYear = paymentDate.getFullYear();
+      // Minimum 1er Octobre de l'année académique de début (ex: 01/10/2025)
+      const minDate = new Date(startYear, 9, 1);
 
-        const pTotal = pYear * 12 + pMonth;
-        const minTotal = minYear * 12 + minMonth;
-
-        if (pTotal < minTotal) {
-          const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-          const monthName = months[minMonth - 1] || `${minMonth}`;
-          logger.warn(`Quittance obsolète payée le ${extracted.datePaiement} (Seuil exigé: ${monthName} ${minYear})`);
-          return {
-            success: false,
-            motif: `Quittance obsolète : la quittance a été payée le ${extracted.datePaiement}, ce qui est antérieur au mois de début de validité exigé (${monthName} ${minYear}). Veuillez fournir une quittance récente.`,
-            extracted,
-          };
-        }
+      if (paymentDate < minDate) {
+        logger.warn(`Quittance obsolète payée le ${extracted.datePaiement} (Seuil exigé: Octobre ${startYear})`);
+        return {
+          success: false,
+          motif: `Quittance obsolète : la quittance a été payée le ${extracted.datePaiement}, ce qui est antérieur au 1er Octobre ${startYear} (début de l'année académique ${rules.academicYear}). Veuillez fournir une quittance récente.`,
+          extracted,
+        };
       }
     }
   }
@@ -330,25 +324,6 @@ export async function verifyReceipt(
       motif: "Mentions officielles du Trésor Public non détectées dans le PDF.",
       extracted,
     };
-  }
-
-  if (rules.requireQrCode) {
-    if (!extracted.qrUrl) {
-      return {
-        success: false,
-        motif: "QR Code du Trésor Public introuvable.",
-        extracted,
-      };
-    }
-
-    const domain = rules.treasuryDomain || "equittancetresor.finances.bj";
-    if (!verifyTreasuryQr(extracted.qrUrl, domain)) {
-      return {
-        success: false,
-        motif: `QR Code non conforme : doit provenir de ${domain}.`,
-        extracted,
-      };
-    }
   }
 
   const confidence = Math.min(1.0, extracted.confidence + (extracted.qrUrl ? 0.15 : 0.05));
