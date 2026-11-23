@@ -23,7 +23,27 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Buffer.from(buffer) as any);
 
-  const sheet = workbook.worksheets[0];
+  let sheet = workbook.getWorksheet("Etudiants") || workbook.getWorksheet("Étudiants");
+
+  if (!sheet) {
+    for (const ws of workbook.worksheets) {
+      let found = false;
+      ws.eachRow((row, rowNum) => {
+        if (rowNum <= 5) {
+          const text = (row.values as Array<unknown>).map((v) => String(v ?? "").toLowerCase()).join(" ");
+          if (text.includes("matricule") || text.includes("mat")) {
+            found = true;
+          }
+        }
+      });
+      if (found) {
+        sheet = ws;
+        break;
+      }
+    }
+  }
+
+  if (!sheet) sheet = workbook.worksheets[0];
   if (!sheet) throw new Error("Le fichier Excel ne contient aucune feuille de calcul.");
 
   const students: OfficialStudent[] = [];
