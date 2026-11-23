@@ -18,7 +18,7 @@ export function clearLocalRoster() {
   localRoster.clear();
 }
 
-/** Parseur Excel ultra-robuste avec ExcelJS et logs détaillés */
+/** Parseur Excel ultra-robuste avec ExcelJS et protection anti-undefined */
 export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<OfficialStudent[]> {
   try {
     logger.info(`Début de parsing Excel. Taille buffer: ${buffer.length} octets`);
@@ -32,7 +32,8 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
         let found = false;
         ws.eachRow((row, rowNum) => {
           if (rowNum <= 5) {
-            const text = (row.values as Array<unknown>).map((v) => String(v ?? "").toLowerCase()).join(" ");
+            const rowValues = Array.isArray(row.values) ? row.values : [];
+            const text = rowValues.map((v) => (v !== null && v !== undefined ? String(v).toLowerCase() : "")).join(" ");
             if (text.includes("matricule") || text.includes("mat")) {
               found = true;
             }
@@ -55,10 +56,11 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
     let headerRowFound = false;
 
     sheet.eachRow((row, rowNumber) => {
-      const values = (row.values as Array<unknown>).map((v) => (v !== null && v !== undefined ? String(v).trim() : ""));
+      const rowValues = Array.isArray(row.values) ? row.values : [];
+      const values = rowValues.map((v) => (v !== null && v !== undefined ? String(v).trim() : ""));
 
       if (!headerRowFound || Object.keys(headerMap).length === 0) {
-        const lower = values.map((v) => v.toLowerCase());
+        const lower = values.map((v) => (v ? String(v).toLowerCase() : ""));
         const matIdx = lower.findIndex((v) => v.includes("matricule") || v === "mat" || v.includes("n° mat"));
         const nomIdx = lower.findIndex((v) => v === "nom" || (v.includes("nom") && !v.includes("prenom") && !v.includes("prénom")));
         const prenomIdx = lower.findIndex((v) => v.includes("prenom") || v.includes("prénom") || v.includes("nom(s)"));
@@ -84,23 +86,47 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
         const rawFil = headerMap.filiere !== -1 ? values[headerMap.filiere] : "MIA";
 
         if (rawMat && rawNom) {
-          const cleanMat = rawMat.replace(/[^0-9A-Z]/gi, "").toUpperCase();
+          const cleanMat = String(rawMat).replace(/[^0-9A-Z]/gi, "").toUpperCase();
           if (cleanMat.length >= 3) {
             students.push({
               matricule: cleanMat,
-              nom: rawNom.toUpperCase(),
-              prenom: rawPrenom,
-              filiere: (rawFil || "MIA").toUpperCase(),
+              nom: String(rawNom).toUpperCase(),
+              prenom: String(rawPrenom),
+              filiere: (String(rawFil) || "MIA").toUpperCase(),
             });
           }
         }
       }
     });
 
+    // Fallback par lecture directe des cellules si row.values a omis des colonnes
+    if (students.length === 0 && headerRowFound) {
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) {
+          const rawMat = row.getCell(headerMap.matricule).value;
+          const rawNom = row.getCell(headerMap.nom).value;
+          const rawPrenom = headerMap.prenom !== -1 ? row.getCell(headerMap.prenom).value : "";
+          const rawFil = headerMap.filiere !== -1 ? row.getCell(headerMap.filiere).value : "MIA";
+
+          if (rawMat && rawNom) {
+            const cleanMat = String(rawMat).replace(/[^0-9A-Z]/gi, "").toUpperCase();
+            if (cleanMat.length >= 3) {
+              students.push({
+                matricule: cleanMat,
+                nom: String(rawNom).toUpperCase(),
+                prenom: String(rawPrenom ?? ""),
+                filiere: (String(rawFil ?? "MIA")).toUpperCase(),
+              });
+            }
+          }
+        }
+      });
+    }
+
     logger.info(`Nombre d'étudiants extraits du fichier : ${students.length}`);
     if (students.length === 0) {
       throw new Error(
-        `Aucun étudiant extrait de la feuille « ${sheet.name} ». Vérifiez que les colonnes 'Matricule' et 'Nom' sont bien remplies.`
+        `Aucun étudiant extrait de la feuille « ${sheet.name} ». Vérifiez que les colonnes 'Matricule' et 'Nom' contiennent bien des données.`
       );
     }
 
