@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthGuard, AdminShell } from "@/components/admin-shell";
 import LoginPage from "@/pages/LoginPage";
 import { Skeleton } from "@/components/ui/admin-ui";
@@ -34,7 +34,7 @@ function ProtectedLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedLayout />}>
@@ -89,6 +89,6 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
