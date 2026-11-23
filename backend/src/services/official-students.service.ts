@@ -130,19 +130,20 @@ export async function importOfficialStudents(
       }
     }
 
-    const { error } = await sb.from("official_students").upsert(
-      parsed.map((s) => ({
+    const BATCH_SIZE = 250;
+    for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
+      const batch = parsed.slice(i, i + BATCH_SIZE).map((s) => ({
         matricule: s.matricule,
         nom: s.nom,
         prenom: s.prenom,
         filiere: s.filiere,
-      })),
-      { onConflict: "matricule" }
-    );
+      }));
 
-    if (error) {
-      logger.error("Erreur insertion table official_students", { error: error.message });
-      throw new Error(`Erreur d'enregistrement en base de données Supabase : ${error.message}. Vérifiez que la migration SQL 005 a bien été exécutée dans le Dashboard Supabase.`);
+      const { error } = await sb.from("official_students").upsert(batch, { onConflict: "matricule" });
+      if (error) {
+        logger.error(`Erreur insertion lot official_students (${i} à ${i + batch.length})`, { error: error.message });
+        throw new Error(`Erreur d'enregistrement progressif en base Supabase (lot ${i}): ${error.message}. Vérifiez que la table official_students existe.`);
+      }
     }
   } else {
     if (mode === "replace") localRoster.clear();
