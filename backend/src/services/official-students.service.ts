@@ -63,10 +63,11 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
 
     if (!headerRowFound || Object.keys(headerMap).length === 0) {
       const lower = values.map((v) => v.toLowerCase());
-      const matIdx = lower.findIndex((v) => v.includes("matricule") || v === "mat" || v.includes("num"));
-      const nomIdx = lower.findIndex((v) => v === "nom" || v.includes("nom"));
-      const prenomIdx = lower.findIndex((v) => v.includes("prénom") || v.includes("prenom") || v.includes("postnom"));
-      const filIdx = lower.findIndex((v) => v.includes("filière") || v.includes("filiere") || v.includes("departement"));
+
+      const matIdx = lower.findIndex((v) => v === "matricule" || v === "mat" || v.includes("matr") || v.includes("n° mat"));
+      const nomIdx = lower.findIndex((v) => v === "nom" || v === "nom(s)" || (v.includes("nom") && !v.includes("prenom") && !v.includes("prénom")));
+      const prenomIdx = lower.findIndex((v) => v === "prénom" || v === "prenom" || v === "prénoms" || v === "prenoms" || v.includes("prenom") || v.includes("prénom"));
+      const filIdx = lower.findIndex((v) => v === "filière" || v === "filiere" || v === "fil" || v.includes("filiere") || v.includes("filière") || v.includes("departement"));
 
       if (matIdx !== -1 && nomIdx !== -1) {
         headerMap = {
