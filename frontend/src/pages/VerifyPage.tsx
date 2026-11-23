@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { verifyQuittance, fetchActiveTps, clearTpListCache, type TpInfo } from "@/lib/api";
+import { verifyQuittance, fetchActiveTps, clearTpListCache, checkOfficialMatricule, type TpInfo } from "@/lib/api";
 import { formatAmount } from "@/lib/utils";
 
 const STEPS = ["Identité", "TP", "Quittance PDF"];
@@ -27,6 +27,7 @@ export default function VerifyPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [checkingMatricule, setCheckingMatricule] = useState(false);
   const [error, setError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [tpList, setTpList] = useState<TpInfo[]>([]);
@@ -76,6 +77,30 @@ export default function VerifyPage() {
     }
     if (step === 1) return tpInfo !== null;
     return Boolean(file);
+  };
+
+  const handleNextStep = async () => {
+    if (step === 0) {
+      setCheckingMatricule(true);
+      setError("");
+      try {
+        const res = await checkOfficialMatricule(form.matricule);
+        if (!res.valid) {
+          setError(
+            res.message ||
+              `Le matricule « ${form.matricule} » n'est pas répertorié dans la base officielle des étudiants autorisés.`
+          );
+          return;
+        }
+        setStep(1);
+      } catch {
+        setStep(1);
+      } finally {
+        setCheckingMatricule(false);
+      }
+    } else if (step < 2) {
+      setStep(step + 1);
+    }
   };
 
   const handleSubmit = async () => {
@@ -411,7 +436,7 @@ export default function VerifyPage() {
                 variant="outline"
                 className="h-12 min-w-[100px] text-sm font-semibold sm:h-11"
                 onClick={() => setStep(step - 1)}
-                disabled={loading}
+                disabled={loading || checkingMatricule}
               >
                 <ChevronLeft className="h-4 w-4" /> Retour
               </Button>
@@ -419,10 +444,18 @@ export default function VerifyPage() {
             {step < 2 ? (
               <Button
                 className="h-12 flex-1 text-sm font-semibold shadow-md shadow-primary/20 sm:h-11"
-                disabled={!canNext()}
-                onClick={() => setStep(step + 1)}
+                disabled={!canNext() || checkingMatricule}
+                onClick={handleNextStep}
               >
-                Continuer <ChevronRight className="h-4 w-4" />
+                {checkingMatricule ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Vérification du matricule...
+                  </>
+                ) : (
+                  <>
+                    Continuer <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
             ) : (
               <Button

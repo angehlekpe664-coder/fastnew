@@ -48,6 +48,40 @@ function sanitizeInput(str: unknown, maxLen = 100): string {
   return str.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, maxLen);
 }
 
+verifyRouter.get("/check-matricule/:matricule", async (req, res, next) => {
+  try {
+    res.set(TP_HEADERS);
+    const matricule = sanitizeInput(decodeURIComponent(req.params.matricule), 40).toUpperCase();
+    if (!matricule) return res.status(400).json({ valid: false, message: "Matricule requis." });
+
+    const isRosterActive = await isOfficialRosterActive();
+    if (!isRosterActive) {
+      return res.json({ valid: true, rosterActive: false });
+    }
+
+    const officialStudent = await lookupOfficialStudent(matricule);
+    if (!officialStudent) {
+      return res.status(403).json({
+        valid: false,
+        rosterActive: true,
+        message: `Le matricule « ${matricule} » n'est pas répertorié dans la base officielle des étudiants autorisés. Veuillez vérifier votre saisie ou contacter l'administration.`,
+      });
+    }
+
+    return res.json({
+      valid: true,
+      rosterActive: true,
+      student: {
+        nom: officialStudent.nom,
+        prenom: officialStudent.prenom,
+        filiere: officialStudent.filiere,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 verifyRouter.get("/tp", async (req, res, next) => {
   try {
     res.set(TP_HEADERS);

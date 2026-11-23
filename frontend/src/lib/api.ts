@@ -54,6 +54,19 @@ async function fetchWithRetry(url: string, init?: RequestInit, retries = 2, dela
   }
 }
 
+export async function checkOfficialMatricule(matricule: string): Promise<{ valid: boolean; message?: string }> {
+  try {
+    const res = await fetchWithRetry(`${API}/api/verify/check-matricule/${encodeURIComponent(matricule.trim().toUpperCase())}`);
+    const json = await res.json();
+    if (!res.ok) {
+      return { valid: false, message: json.message || json.error || `Le matricule « ${matricule} » n'est pas répertorié dans la base officielle.` };
+    }
+    return json;
+  } catch {
+    return { valid: true };
+  }
+}
+
 export async function fetchActiveTps(filiere?: string, force = false): Promise<TpInfo[]> {
   const cacheKey = filiere?.toUpperCase() ?? "__all__";
   if (!force) {
