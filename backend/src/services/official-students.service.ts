@@ -18,7 +18,7 @@ export function clearLocalRoster() {
   localRoster.clear();
 }
 
-/** Parseur Excel ultra-robuste avec ExcelJS et protection anti-undefined */
+/** Parseur Excel ultra-robuste avec row.eachCell et protection anti-sparse array */
 export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<OfficialStudent[]> {
   try {
     logger.info(`Début de parsing Excel. Taille buffer: ${buffer.length} octets`);
@@ -30,13 +30,13 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
     if (!sheet) {
       for (const ws of workbook.worksheets) {
         let found = false;
-        ws.eachRow((row, rowNum) => {
-          if (rowNum <= 5) {
-            const rowValues = Array.isArray(row.values) ? row.values : [];
-            const text = rowValues.map((v) => (v !== null && v !== undefined ? String(v).toLowerCase() : "")).join(" ");
-            if (text.includes("matricule") || text.includes("mat")) {
-              found = true;
-            }
+        ws.eachRow((row) => {
+          let rowText = "";
+          row.eachCell({ includeEmpty: true }, (cell) => {
+            rowText += " " + String(cell.value ?? "").toLowerCase();
+          });
+          if (rowText.includes("matricule") || rowText.includes("mat")) {
+            found = true;
           }
         });
         if (found) {
@@ -52,15 +52,28 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
     logger.info(`Feuille sélectionnée pour parsing : ${sheet.name}`);
 
     const students: OfficialStudent[] = [];
-    let headerMap: Record<string, number> = {};
+    let headerMap = { matricule: -1, nom: -1, prenom: -1, filiere: -1 };
     let headerRowFound = false;
 
     sheet.eachRow((row, rowNumber) => {
-      const rowValues = Array.isArray(row.values) ? row.values : [];
-      const values = rowValues.map((v) => (v !== null && v !== undefined ? String(v).trim() : ""));
+      const cellValues: string[] = [];
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        const val = cell.value;
+        let strVal = "";
+        if (val !== null && val !== undefined) {
+          if (typeof val === "object" && "text" in val) {
+            strVal = String((val as any).text ?? "").trim();
+          } else if (typeof val === "object" && "result" in val) {
+            strVal = String((val as any).result ?? "").trim();
+          } else {
+            strVal = String(val).trim();
+          }
+        }
+        cellValues.push(strVal);
+      });
 
-      if (!headerRowFound || Object.keys(headerMap).length === 0) {
-        const lower = values.map((v) => (v ? String(v).toLowerCase() : ""));
+      if (!headerRowFound) {
+        const lower = cellValues.map((v) => (v ? String(v).toLowerCase() : ""));
         const matIdx = lower.findIndex((v) => v.includes("matricule") || v === "mat" || v.includes("n° mat"));
         const nomIdx = lower.findIndex((v) => v === "nom" || (v.includes("nom") && !v.includes("prenom") && !v.includes("prénom")));
         const prenomIdx = lower.findIndex((v) => v.includes("prenom") || v.includes("prénom") || v.includes("nom(s)"));
@@ -77,13 +90,11 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
           logger.info(`En-têtes trouvés à la ligne ${rowNumber}:`, headerMap);
           return;
         }
-      }
-
-      if (headerRowFound && rowNumber > 1 && Object.keys(headerMap).length > 0) {
-        const rawMat = values[headerMap.matricule];
-        const rawNom = values[headerMap.nom];
-        const rawPrenom = headerMap.prenom !== -1 ? values[headerMap.prenom] : "";
-        const rawFil = headerMap.filiere !== -1 ? values[headerMap.filiere] : "MIA";
+      } else {
+        const rawMat = cellValues[headerMap.matricule] ?? "";
+        const rawNom = cellValues[headerMap.nom] ?? "";
+        const rawPrenom = headerMap.prenom !== -1 ? cellValues[headerMap.prenom] ?? "" : "";
+        const rawFil = headerMap.filiere !== -1 ? cellValues[headerMap.filiere] ?? "MIA" : "MIA";
 
         if (rawMat && rawNom) {
           const cleanMat = String(rawMat).replace(/[^0-9A-Z]/gi, "").toUpperCase();
@@ -98,30 +109,6 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
         }
       }
     });
-
-    // Fallback par lecture directe des cellules si row.values a omis des colonnes
-    if (students.length === 0 && headerRowFound) {
-      sheet.eachRow((row, rowNumber) => {
-        if (rowNumber > 1) {
-          const rawMat = row.getCell(headerMap.matricule).value;
-          const rawNom = row.getCell(headerMap.nom).value;
-          const rawPrenom = headerMap.prenom !== -1 ? row.getCell(headerMap.prenom).value : "";
-          const rawFil = headerMap.filiere !== -1 ? row.getCell(headerMap.filiere).value : "MIA";
-
-          if (rawMat && rawNom) {
-            const cleanMat = String(rawMat).replace(/[^0-9A-Z]/gi, "").toUpperCase();
-            if (cleanMat.length >= 3) {
-              students.push({
-                matricule: cleanMat,
-                nom: String(rawNom).toUpperCase(),
-                prenom: String(rawPrenom ?? ""),
-                filiere: (String(rawFil ?? "MIA")).toUpperCase(),
-              });
-            }
-          }
-        }
-      });
-    }
 
     logger.info(`Nombre d'étudiants extraits du fichier : ${students.length}`);
     if (students.length === 0) {
