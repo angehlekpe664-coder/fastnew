@@ -18,9 +18,10 @@ export function clearLocalRoster() {
   localRoster.clear();
 }
 
-/** Parseur Excel ultra-robuste avec ExcelJS */
+/** Parseur Excel ultra-robuste avec ExcelJS et logs détaillés */
 export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<OfficialStudent[]> {
   try {
+    logger.info(`Début de parsing Excel. Taille buffer: ${buffer.length} octets`);
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(Buffer.from(buffer) as any);
 
@@ -47,6 +48,8 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
     if (!sheet) sheet = workbook.worksheets[0];
     if (!sheet) throw new Error("Le fichier Excel ne contient aucune feuille de calcul.");
 
+    logger.info(`Feuille sélectionnée pour parsing : ${sheet.name}`);
+
     const students: OfficialStudent[] = [];
     let headerMap: Record<string, number> = {};
     let headerRowFound = false;
@@ -69,6 +72,7 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
             filiere: filIdx !== -1 ? filIdx : -1,
           };
           headerRowFound = true;
+          logger.info(`En-têtes trouvés à la ligne ${rowNumber}:`, headerMap);
           return;
         }
       }
@@ -93,9 +97,10 @@ export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<Offici
       }
     });
 
+    logger.info(`Nombre d'étudiants extraits du fichier : ${students.length}`);
     if (students.length === 0) {
       throw new Error(
-        "Aucun étudiant n'a pu être extrait. Vérifiez que votre fichier contient les colonnes 'Matricule' et 'Nom'."
+        `Aucun étudiant extrait de la feuille « ${sheet.name} ». Vérifiez que les colonnes 'Matricule' et 'Nom' sont bien remplies.`
       );
     }
 
