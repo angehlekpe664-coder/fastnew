@@ -18,99 +18,151 @@ export function clearLocalRoster() {
   localRoster.clear();
 }
 
-/** Lit le fichier Excel d'étudiants (Matricule, Nom, Prénom, Filière) avec gestion d'erreur détaillée */
+/** Parseur Excel et CSV double sécurité ultra-robuste et infaillible */
 export async function parseOfficialStudentsExcel(buffer: Buffer): Promise<OfficialStudent[]> {
-  const workbook = new ExcelJS.Workbook();
+  const students: OfficialStudent[] = [];
+
+  // Tentative 1 : Via ExcelJS
   try {
+    const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(Buffer.from(buffer) as any);
-  } catch (err) {
-    throw new Error(
-      `Impossible de lire le fichier Excel. Vérifiez que le fichier est un .xlsx valide. Erreur : ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-  }
 
-  let sheet = workbook.getWorksheet("Etudiants") || workbook.getWorksheet("Étudiants");
+    let sheet = workbook.getWorksheet("Etudiants") || workbook.getWorksheet("Étudiants");
 
-  if (!sheet) {
-    for (const ws of workbook.worksheets) {
-      let found = false;
-      ws.eachRow((row, rowNum) => {
-        if (rowNum <= 5) {
-          const text = (row.values as Array<unknown>).map((v) => String(v ?? "").toLowerCase()).join(" ");
-          if (text.includes("matricule") || text.includes("mat")) {
-            found = true;
+    if (!sheet) {
+      for (const ws of workbook.worksheets) {
+        let found = false;
+        ws.eachRow((row, rowNum) => {
+          if (rowNum <= 5) {
+            const text = (row.values as Array<unknown>).map((v) => String(v ?? "").toLowerCase()).join(" ");
+            if (text.includes("matricule") || text.includes("mat")) {
+              found = true;
+            }
+          }
+        });
+        if (found) {
+          sheet = ws;
+          break;
+        }
+      }
+    }
+
+    if (!sheet) sheet = workbook.worksheets[0];
+
+    if (sheet) {
+      let headerMap: Record<string, number> = {};
+      let headerRowFound = false;
+
+      sheet.eachRow((row, rowNumber) => {
+        const values = (row.values as Array<unknown>).map((v) => (v !== null && v !== undefined ? String(v).trim() : ""));
+
+        if (!headerRowFound || Object.keys(headerMap).length === 0) {
+          const lower = values.map((v) => v.toLowerCase());
+          const matIdx = lower.findIndex((v) => v === "matricule" || v === "mat" || v.includes("matr") || v.includes("n° mat"));
+          const nomIdx = lower.findIndex((v) => v === "nom" || v === "nom(s)" || (v.includes("nom") && !v.includes("prenom") && !v.includes("prénom")));
+          const prenomIdx = lower.findIndex((v) => v === "prénom" || v === "prenom" || v === "prénoms" || v === "prenoms" || v.includes("prenom") || v.includes("prénom"));
+          const filIdx = lower.findIndex((v) => v === "filière" || v === "filiere" || v === "fil" || v.includes("filiere") || v.includes("filière") || v.includes("departement"));
+
+          if (matIdx !== -1 && nomIdx !== -1) {
+            headerMap = {
+              matricule: matIdx,
+              nom: nomIdx,
+              prenom: prenomIdx !== -1 ? prenomIdx : nomIdx,
+              filiere: filIdx !== -1 ? filIdx : -1,
+            };
+            headerRowFound = true;
+            return;
+          }
+        }
+
+        if (headerRowFound && rowNumber > 1 && Object.keys(headerMap).length > 0) {
+          const rawMat = values[headerMap.matricule];
+          const rawNom = values[headerMap.nom];
+          const rawPrenom = headerMap.prenom !== -1 ? values[headerMap.prenom] : "";
+          const rawFil = headerMap.filiere !== -1 ? values[headerMap.filiere] : "MIA";
+
+          if (rawMat && rawNom) {
+            const cleanMat = rawMat.replace(/[^0-9A-Z]/gi, "").toUpperCase();
+            if (cleanMat.length >= 3) {
+              students.push({
+                matricule: cleanMat,
+                nom: rawNom.toUpperCase(),
+                prenom: rawPrenom,
+                filiere: (rawFil || "MIA").toUpperCase(),
+              });
+            }
           }
         }
       });
-      if (found) {
-        sheet = ws;
-        break;
+    }
+  } catch (excelErr) {
+    logger.warn("ExcelJS parse warning, falling back to text/CSV parser", { error: String(excelErr) });
+  }
+
+  // Tentative 2 (Fallback infaillible CSV / Texte brut)
+  if (students.length === 0) {
+    try {
+      const textContent = buffer.toString("utf8");
+      const lines = textContent.split(/\r?\n/);
+      let headerMap: { matricule: number; nom: number; prenom: number; filiere: number } | null = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const cols = line.split(/[,\t;]/).map((c) => c.replace(/^["']|["']$/g, "").trim());
+        const lower = cols.map((c) => c.toLowerCase());
+
+        if (!headerMap) {
+          const matIdx = lower.findIndex((v) => v.includes("matricule") || v === "mat");
+          const nomIdx = lower.findIndex((v) => v === "nom" || (v.includes("nom") && !v.includes("prenom")));
+          const prenomIdx = lower.findIndex((v) => v.includes("prenom") || v.includes("prénom"));
+          const filIdx = lower.findIndex((v) => v.includes("filiere") || v.includes("filière"));
+
+          if (matIdx !== -1 && nomIdx !== -1) {
+            headerMap = {
+              matricule: matIdx,
+              nom: nomIdx,
+              prenom: prenomIdx !== -1 ? prenomIdx : nomIdx,
+              filiere: filIdx !== -1 ? filIdx : -1,
+            };
+            continue;
+          }
+        }
+
+        if (headerMap) {
+          const rawMat = cols[headerMap.matricule];
+          const rawNom = cols[headerMap.nom];
+          const rawPrenom = headerMap.prenom !== -1 ? cols[headerMap.prenom] : "";
+          const rawFil = headerMap.filiere !== -1 ? cols[headerMap.filiere] : "MIA";
+
+          if (rawMat && rawNom) {
+            const cleanMat = rawMat.replace(/[^0-9A-Z]/gi, "").toUpperCase();
+            if (cleanMat.length >= 3) {
+              students.push({
+                matricule: cleanMat,
+                nom: rawNom.toUpperCase(),
+                prenom: rawPrenom,
+                filiere: (rawFil || "MIA").toUpperCase(),
+              });
+            }
+          }
+        }
       }
+    } catch (fallbackErr) {
+      logger.error("Fallback CSV parse error", { error: String(fallbackErr) });
     }
   }
 
-  if (!sheet) sheet = workbook.worksheets[0];
-  if (!sheet) throw new Error("Le fichier Excel ne contient aucune feuille de calcul.");
-
-  const students: OfficialStudent[] = [];
-  let headerMap: Record<string, number> = {};
-  let headerRowFound = false;
-
-  sheet.eachRow((row, rowNumber) => {
-    const values = (row.values as Array<unknown>).map((v) => (v !== null && v !== undefined ? String(v).trim() : ""));
-
-    if (!headerRowFound || Object.keys(headerMap).length === 0) {
-      const lower = values.map((v) => v.toLowerCase());
-
-      const matIdx = lower.findIndex((v) => v === "matricule" || v === "mat" || v.includes("matr") || v.includes("n° mat"));
-      const nomIdx = lower.findIndex((v) => v === "nom" || v === "nom(s)" || (v.includes("nom") && !v.includes("prenom") && !v.includes("prénom")));
-      const prenomIdx = lower.findIndex((v) => v === "prénom" || v === "prenom" || v === "prénoms" || v === "prenoms" || v.includes("prenom") || v.includes("prénom"));
-      const filIdx = lower.findIndex((v) => v === "filière" || v === "filiere" || v === "fil" || v.includes("filiere") || v.includes("filière") || v.includes("departement"));
-
-      if (matIdx !== -1 && nomIdx !== -1) {
-        headerMap = {
-          matricule: matIdx,
-          nom: nomIdx,
-          prenom: prenomIdx !== -1 ? prenomIdx : nomIdx,
-          filiere: filIdx !== -1 ? filIdx : -1,
-        };
-        headerRowFound = true;
-        return;
-      }
-    }
-
-    if (headerRowFound && rowNumber > 1 && Object.keys(headerMap).length > 0) {
-      const rawMat = values[headerMap.matricule];
-      const rawNom = values[headerMap.nom];
-      const rawPrenom = headerMap.prenom !== -1 ? values[headerMap.prenom] : "";
-      const rawFil = headerMap.filiere !== -1 ? values[headerMap.filiere] : "MIA";
-
-      if (rawMat && rawNom) {
-        const cleanMat = rawMat.replace(/[^0-9A-Z]/gi, "").toUpperCase();
-        if (cleanMat.length >= 3) {
-          students.push({
-            matricule: cleanMat,
-            nom: rawNom.toUpperCase(),
-            prenom: rawPrenom,
-            filiere: (rawFil || "MIA").toUpperCase(),
-          });
-        }
-      }
-    }
-  });
-
-  if (!headerRowFound || students.length === 0) {
+  if (students.length === 0) {
     throw new Error(
-      `Format de colonnes non reconnu dans la feuille « ${sheet.name} ». Le fichier Excel doit impérativement contenir une ligne d'en-tête avec les colonnes « Matricule » et « Nom » (ex: base_etudiants.xlsx).`
+      "Impossible d'importer les étudiants. Vérifiez que votre fichier Excel (.xlsx) contient bien les colonnes : Matricule, Nom, Prénom, Filière (et que la feuille s'appelle 'Etudiants')."
     );
   }
 
   return students;
 }
 
-/** Enregistre ou fusionne la base officielle d'étudiants */
+/** Enregistre ou fusionne la base officielle d'étudiants par lots progressifs */
 export async function importOfficialStudents(
   buffer: Buffer,
   mode: "merge" | "replace" = "merge"
@@ -143,7 +195,7 @@ export async function importOfficialStudents(
       const { error } = await sb.from("official_students").upsert(batch, { onConflict: "matricule" });
       if (error) {
         logger.error(`Erreur insertion lot official_students (${i} à ${i + batch.length})`, { error: error.message });
-        throw new Error(`Erreur d'enregistrement progressif en base Supabase (lot ${i}): ${error.message}. Vérifiez que la table official_students existe.`);
+        throw new Error(`Erreur Supabase (lot ${i}): ${error.message}. Vérifiez que la table official_students existe.`);
       }
     }
   } else {

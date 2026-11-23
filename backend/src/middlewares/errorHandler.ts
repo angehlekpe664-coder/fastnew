@@ -15,12 +15,12 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ) {
-  logger.error(err.message, { stack: config.isProduction() ? undefined : err.stack });
+  logger.error(err.message, { stack: err.stack });
 
   const statusCode = (err as any).status || (err as any).statusCode || 500;
 
   res.status(statusCode).json({
-    error: config.isProduction() && statusCode === 500 ? "Erreur interne du serveur." : err.message || "Erreur serveur.",
+    error: err.message || "Erreur serveur.",
     status: statusCode,
   });
 }
