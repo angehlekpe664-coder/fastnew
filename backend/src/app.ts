@@ -25,7 +25,6 @@ function isAllowedOrigin(origin: string): boolean {
     } catch {
       // invalid origin format
     }
-    // Tolérance large en production pour éviter tout "Failed to fetch" intempestif
     return true;
   }
   return true;
@@ -34,12 +33,23 @@ function isAllowedOrigin(origin: string): boolean {
 export function createApp() {
   const app = express();
 
-  // En-têtes de sécurité HTTP
+  // En-têtes de sécurité HTTP renforcés
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
+      xFrameOptions: { action: "deny" },
+      xContentTypeOptions: true,
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
     })
   );
+
+  // En-têtes de sécurité supplémentaires
+  app.use((_req, res, next) => {
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
 
   // Rate Limiting anti-abus (300 requêtes / 15 min par IP)
   const limiter = rateLimit({
